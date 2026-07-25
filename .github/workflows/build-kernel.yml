@@ -116,13 +116,12 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Clean Wrapper Adaptation)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19..."
           SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
           if [ -f "$SUCOMPAT" ]; then
             sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
           fi
           
-          # Adaptasi bersih file_wrapper.c agar fungsi wrapper tetap utuh tanpa iopoll/remap yang patah
           FILE_WRAPPER="drivers/kernelsu/infra/file_wrapper.c"
           if [ -f "$FILE_WRAPPER" ]; then
             sed -i 's/orig->f_op->iopoll/NULL/g' "$FILE_WRAPPER"
@@ -130,7 +129,6 @@ jobs:
             sed -i 's/fp->f_op->iopoll/NULL/g' "$FILE_WRAPPER"
             sed -i 's/fp->f_op->remap_file_range/NULL/g' "$FILE_WRAPPER"
             sed -i '/REMAP_FILE_DEDUP/d' "$FILE_WRAPPER"
-            echo "KSU-Next file_wrapper.c adapted cleanly without feature loss!"
           fi
 
           echo "4. Patching Samsung Debug Snapshot..."
@@ -139,25 +137,14 @@ jobs:
             sed -i '/ESR_ELx_EC_/d' "$DPM_FILE"
           fi
           
-          echo "5. Fixing Netfilter xt_mark types with linux/types.h header..."
+          echo "5. Global Netfilter Header Bridge & Fix..."
+          mkdir -p "include/linux/netfilter_ipv4"
+          find "include" -name "ipt_*.h" -exec cp -u {} "include/linux/netfilter_ipv4/" \; 2>/dev/null || true
+          find "arch" -name "ipt_*.h" -exec cp -u {} "include/linux/netfilter_ipv4/" \; 2>/dev/null || true
+          
           XT_MARK="net/netfilter/xt_mark.c"
           if [ -f "$XT_MARK" ]; then
-            if [ -d "include/linux/netfilter" ]; then
-              cd "include/linux/netfilter"
-              [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
-              [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
-              cd "$KERNEL_DIR"
-            fi
-            if [ -d "include/uapi/linux/netfilter" ]; then
-              cd "include/uapi/linux/netfilter"
-              [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
-              [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
-              cd "$KERNEL_DIR"
-            fi
-            
-            # Menyertakan linux/types.h di baris teratas sebelum deklarasi struct
             sed -i '1i #include <linux/types.h>\nstruct xt_mark_tginfo2 { __u32 mark, mask; };\nstruct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' "$XT_MARK"
-            echo "xt_mark.c successfully patched with proper types!"
           fi
 
       - name: Setup Clang 17
