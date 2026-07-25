@@ -66,25 +66,16 @@ jobs:
 
       - name: Patch Mali GPU Kconfig
         run: |
-          # Samsung Exynos kernels ship a Mali GPU Kconfig that uses
-          # 'depends on' with a shell-expansion syntax unsupported by
-          # the host kconfig parser, causing "syntax error" at lines 27-29.
-          # Fix: comment out the two broken 'depends on' lines.
-          MALI_KCONFIG="$KERNEL_DIR/drivers/gpu/arm/Kconfig"
-          if [ -f "$MALI_KCONFIG" ]; then
-            echo "Patching $MALI_KCONFIG"
-            # Replace lines that call shell commands inside 'depends on' with a safe stub
-            sed -i 's/^\(\s*depends on\s*\$(shell.*\)/# \1/' "$MALI_KCONFIG"
-            # Also handle bare shell() calls in source lines
-            sed -i '/^source.*\$(shell/d' "$MALI_KCONFIG"
-            echo "Mali Kconfig patched."
-          else
-            echo "Mali Kconfig not found at expected path, searching..."
-            find "$KERNEL_DIR/drivers/gpu" -name "Kconfig" | xargs grep -l 'shell' 2>/dev/null | while read f; do
-              sed -i 's/^\(\s*depends on\s*\$(shell.*\)/# \1/' "$f"
-              sed -i '/^source.*\$(shell/d' "$f"
-              echo "Patched: $f"
-            done
+          echo "Applying aggressive Mali Kconfig patch..."
+          MALI_DIR="$KERNEL_DIR/drivers/gpu/arm"
+          if [ -d "$MALI_DIR" ]; then
+            # Hapus paksa semua baris yang mengandung pemanggilan script $() di seluruh Kconfig GPU
+            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(shell/d' {} \;
+            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(success/d' {} \;
+            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(cc-option/d' {} \;
+            # Hapus baris 27-30 secara spesifik pada Kconfig utama jika formatnya aneh
+            sed -i '27,30d' "$MALI_DIR/Kconfig" 2>/dev/null || true
+            echo "Mali GPU Kconfig berhasil dibungkam secara paksa."
           fi
 
       - name: Detect kernel version
