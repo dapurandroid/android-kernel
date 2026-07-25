@@ -65,45 +65,6 @@ jobs:
           find "$KERNEL_DIR/arch/arm64/kernel/vdso" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
           echo "Script permissions fixed."
 
-      - name: Patch Mali GPU Kconfig
-        run: |
-          echo "Applying aggressive Mali Kconfig patch..."
-          MALI_DIR="$KERNEL_DIR/drivers/gpu/arm"
-          if [ -d "$MALI_DIR" ]; then
-            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(shell/d' {} \;
-            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(success/d' {} \;
-            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(cc-option/d' {} \;
-            sed -i '27,30d' "$MALI_DIR/Kconfig" 2>/dev/null || true
-          fi
-
-      - name: Patch Samsung Knox Security
-        run: |
-          echo "Fixing sloppy include paths in Samsung Knox/FIVE..."
-          FIVE_DIR="$KERNEL_DIR/security/samsung/five"
-          if [ -d "$FIVE_DIR" ]; then
-            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/block/|#include \"$KERNEL_DIR/drivers/block/|g" {} \;
-            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"security/integrity/|#include \"$KERNEL_DIR/security/integrity/|g" {} \;
-            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
-          fi
-
-      - name: Patch Samsung Debug & Netfilter
-        run: |
-          echo "Patching Samsung Debug Snapshot..."
-          DPM_FILE="$KERNEL_DIR/lib/debug-snapshot-dpm.c"
-          if [ -f "$DPM_FILE" ]; then
-            sed -i '/ESR_ELx_EC_BREAKPT_LOW/d' "$DPM_FILE"
-            sed -i '/ESR_ELx_EC_BREAKPT_CUR/d' "$DPM_FILE"
-            sed -i '/ESR_ELx_EC_WATCHPT_LOW/d' "$DPM_FILE"
-            sed -i '/ESR_ELx_EC_WATCHPT_CUR/d' "$DPM_FILE"
-            sed -i '/ESR_ELx_EC_BRK64/d' "$DPM_FILE"
-          fi
-          
-          echo "Fixing Netfilter xt_mark include path..."
-          XT_MARK="$KERNEL_DIR/net/netfilter/xt_mark.c"
-          if [ -f "$XT_MARK" ]; then
-            sed -i 's|<linux/netfilter/xt_mark.h>|<uapi/linux/netfilter/xt_mark.h>|g' "$XT_MARK"
-          fi
-
       - name: Detect kernel version
         id: kver
         run: |
@@ -133,6 +94,55 @@ jobs:
           KSU_TAG="${{ steps.ksu_info.outputs.ksu_version }}"
           curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s "$KSU_TAG"
           head -5 KernelSU/kernel/Makefile 2>/dev/null || head -5 drivers/kernelsu/Makefile 2>/dev/null
+
+      - name: Apply Custom Patches (Mali, Knox, KSU-Next, Netfilter)
+        run: |
+          cd "$KERNEL_DIR"
+          
+          echo "1. Patching Mali GPU Kconfig..."
+          MALI_DIR="drivers/gpu/arm"
+          if [ -d "$MALI_DIR" ]; then
+            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(shell/d' {} \;
+            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(success/d' {} \;
+            find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(cc-option/d' {} \;
+            sed -i '27,30d' "$MALI_DIR/Kconfig" 2>/dev/null || true
+          fi
+
+          echo "2. Patching Samsung Knox Security (FIVE)..."
+          FIVE_DIR="security/samsung/five"
+          if [ -d "$FIVE_DIR" ]; then
+            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/block/|#include \"$KERNEL_DIR/drivers/block/|g" {} \;
+            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"security/integrity/|#include \"$KERNEL_DIR/security/integrity/|g" {} \;
+            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
+          fi
+
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (pgtable.h)..."
+          SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
+          if [ -f "$SUCOMPAT" ]; then
+            sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
+            echo "pgtable.h patched for older kernels!"
+          fi
+
+          echo "4. Patching Samsung Debug Snapshot..."
+          DPM_FILE="lib/debug-snapshot-dpm.c"
+          if [ -f "$DPM_FILE" ]; then
+            sed -i '/ESR_ELx_EC_BREAKPT/d' "$DPM_FILE"
+            sed -i '/ESR_ELx_EC_WATCHPT/d' "$DPM_FILE"
+            sed -i '/ESR_ELx_EC_BRK64/d' "$DPM_FILE"
+          fi
+          
+          echo "5. Fixing Netfilter xt_mark case-sensitivity/path issue..."
+          XT_MARK="net/netfilter/xt_mark.c"
+          if [ -f "$XT_MARK" ]; then
+            # Pelacak otomatis file xt_mark.h tanpa peduli huruf besar/kecil
+            REAL_XT=$(find "include" -iname "xt_mark.h" | head -1)
+            if [ -n "$REAL_XT" ]; then
+              ABS_XT="$KERNEL_DIR/$REAL_XT"
+              sed -i "s|#include <linux/netfilter/xt_mark.h>|#include \"$ABS_XT\"|g" "$XT_MARK"
+              sed -i "s|#include <uapi/linux/netfilter/xt_mark.h>|#include \"$ABS_XT\"|g" "$XT_MARK"
+              echo "File xt_mark.h berhasil di-patch secara dinamis!"
+            fi
+          fi
 
       - name: Setup Clang 17
         run: |
