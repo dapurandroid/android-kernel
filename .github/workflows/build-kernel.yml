@@ -131,26 +131,15 @@ jobs:
           echo "void ksu_fsnotify_exit(void) {}" >> tmp_f.c
           for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_f.c "$f"; done
 
-          echo "4. Applying Hybrid SELinux Pass-through for Kernel 4.19..."
+          echo "4. Transplanting Official KernelSU SELinux module for 4.19 Compatibility..."
           SELINUX_DIR=$(find -L drivers/kernelsu -type d -name "selinux" | head -n 1)
           if [ -n "$SELINUX_DIR" ]; then
-            echo '#ifndef __KSU_LEGACY_SELINUX_H' > "$SELINUX_DIR/ksu_legacy_selinux.h"
-            echo '#define __KSU_LEGACY_SELINUX_H' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
-            echo '#include <linux/types.h>' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
-            echo '#define policydb_load_isids(...) 0' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
-            echo 'static inline void *ksu_dup_sepolicy(void *old) { return NULL; }' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
-            echo 'static inline int ksu_load_sepolicy(void *data, size_t len) { return 0; }' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
-            echo '#endif' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
-            
-            for f in $(find -L "$SELINUX_DIR" -type f -name "*.c" 2>/dev/null); do
-              sed -i '1i #include "ksu_legacy_selinux.h"' "$f"
-            done
-            
-            RULES_C="$SELINUX_DIR/rules.c"
-            if [ -f "$RULES_C" ]; then
-              sed -i 's/selinux_state\.policy/NULL/g' "$RULES_C"
-              sed -i 's/selinux_state\.policy_mutex/ksu_dummy_mutex/g' "$RULES_C"
-            fi
+            # Hapus total modul SELinux milik KSU-Next yang tidak kompatibel
+            rm -rf "$SELINUX_DIR"/*
+            # Unduh dan cangkok modul SELinux dari KernelSU Resmi yang terbukti stabil di 4.19
+            git clone --depth 1 https://github.com/tiann/KernelSU.git /tmp/ksu_official
+            cp -r /tmp/ksu_official/kernel/selinux/* "$SELINUX_DIR"/
+            echo "SELinux transplant successful!"
           fi
 
           echo "5. Patching Samsung Debug Snapshot..."
