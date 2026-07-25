@@ -116,55 +116,40 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Anti-Injection Method)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19..."
           for f in $(find -L drivers/kernelsu -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "allowlist.c" 2>/dev/null); do sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do { } while(0)\n#endif' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "app_profile.c" 2>/dev/null); do sed -i '/filter_count/d' "$f"; done
           
-          cat << 'EOF' > tmp_wrapper.c
-          int ksu_file_wrapper_init(void) { return 0; }
-          void ksu_file_wrapper_exit(void) {}
-          EOF
-          for f in $(find -L drivers/kernelsu -type f -name "file_wrapper.c" 2>/dev/null); do cp tmp_wrapper.c "$f"; done
+          echo "int ksu_file_wrapper_init(void) { return 0; }" > tmp_w.c
+          echo "void ksu_file_wrapper_exit(void) {}" >> tmp_w.c
+          for f in $(find -L drivers/kernelsu -type f -name "file_wrapper.c" 2>/dev/null); do cp tmp_w.c "$f"; done
           
-          cat << 'EOF' > tmp_fsnotify.c
-          int ksu_fsnotify_init(void) { return 0; }
-          void ksu_fsnotify_exit(void) {}
-          EOF
-          for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_fsnotify.c "$f"; done
+          echo "int ksu_fsnotify_init(void) { return 0; }" > tmp_f.c
+          echo "void ksu_fsnotify_exit(void) {}" >> tmp_f.c
+          for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_f.c "$f"; done
 
-          echo "4. Patching KernelSU SELinux for Samsung 4.19 (God Mode)..."
+          echo "4. Patching KernelSU SELinux for Samsung 4.19..."
           SELINUX_DIR=$(find -L drivers/kernelsu -type d -name "selinux" | head -n 1)
           if [ -n "$SELINUX_DIR" ]; then
-            cat << 'EOF' > "$SELINUX_DIR/tmp_selinux_hack.h"
-            #ifndef _KSU_419_SELINUX_H
-            #define _KSU_419_SELINUX_H
-            #include <linux/mutex.h>
-            struct selinux_policy {
-                int policydb;
-                void *sidtab;
-                int latest_granting;
-            };
-            struct ksu_dummy_state_struct {
-                struct selinux_policy *policy;
-                struct mutex policy_mutex;
-            };
-            extern struct ksu_dummy_state_struct ksu_dummy_state;
-            #define selinux_state ksu_dummy_state
-            #define policydb_load_isids(...) 0
-            #endif
-            EOF
+            echo '#ifndef _KSU_419_SELINUX_H' > "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo '#define _KSU_419_SELINUX_H' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo '#include <linux/mutex.h>' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo 'struct selinux_policy { int policydb; void *sidtab; int latest_granting; };' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo 'struct ksu_dummy_state_struct { struct selinux_policy *policy; struct mutex policy_mutex; };' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo 'extern struct ksu_dummy_state_struct ksu_dummy_state;' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo '#define selinux_state ksu_dummy_state' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo '#define policydb_load_isids(...) 0' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo '#endif' >> "$SELINUX_DIR/tmp_selinux_hack.h"
             
             for f in $(find -L "$SELINUX_DIR" -type f -name "*.c" 2>/dev/null); do
               sed -i '1i #include "tmp_selinux_hack.h"' "$f"
             done
-            
             for f in $(find -L "$SELINUX_DIR" -type f -name "rules.c" 2>/dev/null); do
               sed -i '1i struct ksu_dummy_state_struct ksu_dummy_state;' "$f"
             done
-            
             for f in $(find -L "$SELINUX_DIR" -type f -name "sepolicy.c" 2>/dev/null); do
               sed -i '/struct selinux_policy \*ksu_dup_sepolicy/a \    if (!old_pol) return NULL;' "$f"
             done
@@ -176,43 +161,35 @@ jobs:
           echo "6. Restoring Missing Netfilter Headers..."
           mkdir -p include/linux/netfilter include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
           
-          cat << 'EOF' > include/linux/netfilter/xt_mark.h
-          #ifndef _XT_MARK_H
-          #define _XT_MARK_H
-          #include <linux/types.h>
-          struct xt_mark_tginfo2 { __u32 mark, mask; };
-          struct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };
-          #endif
-          EOF
+          echo '#ifndef _XT_MARK_H' > include/linux/netfilter/xt_mark.h
+          echo '#define _XT_MARK_H' >> include/linux/netfilter/xt_mark.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter/xt_mark.h
+          echo 'struct xt_mark_tginfo2 { __u32 mark, mask; };' >> include/linux/netfilter/xt_mark.h
+          echo 'struct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' >> include/linux/netfilter/xt_mark.h
+          echo '#endif' >> include/linux/netfilter/xt_mark.h
           
-          cat << 'EOF' > include/linux/netfilter/xt_dscp.h
-          #ifndef _XT_DSCP_H
-          #define _XT_DSCP_H
-          #include <linux/types.h>
-          #define XT_DSCP_MASK 0xfc
-          #define XT_DSCP_SHIFT 2
-          #define XT_DSCP_MAX 0x3f
-          struct xt_dscp_info { __u8 dscp; __u8 invert; };
-          #endif
-          EOF
+          echo '#ifndef _XT_DSCP_H' > include/linux/netfilter/xt_dscp.h
+          echo '#define _XT_DSCP_H' >> include/linux/netfilter/xt_dscp.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter/xt_dscp.h
+          echo '#define XT_DSCP_MASK 0xfc' >> include/linux/netfilter/xt_dscp.h
+          echo '#define XT_DSCP_SHIFT 2' >> include/linux/netfilter/xt_dscp.h
+          echo '#define XT_DSCP_MAX 0x3f' >> include/linux/netfilter/xt_dscp.h
+          echo 'struct xt_dscp_info { __u8 dscp; __u8 invert; };' >> include/linux/netfilter/xt_dscp.h
+          echo '#endif' >> include/linux/netfilter/xt_dscp.h
           
-          cat << 'EOF' > include/linux/netfilter_ipv4/ipt_ttl.h
-          #ifndef _IPT_TTL_H
-          #define _IPT_TTL_H
-          #include <linux/types.h>
-          enum { IPT_TTL_EQ = 0, IPT_TTL_NE, IPT_TTL_LT, IPT_TTL_GT };
-          struct ipt_ttl_info { __u8 mode; __u8 ttl; };
-          #endif
-          EOF
+          echo '#ifndef _IPT_TTL_H' > include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#define _IPT_TTL_H' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo 'enum { IPT_TTL_EQ = 0, IPT_TTL_NE, IPT_TTL_LT, IPT_TTL_GT };' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo 'struct ipt_ttl_info { __u8 mode; __u8 ttl; };' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#endif' >> include/linux/netfilter_ipv4/ipt_ttl.h
           
-          cat << 'EOF' > include/linux/netfilter_ipv6/ip6t_hl.h
-          #ifndef _IP6T_HL_H
-          #define _IP6T_HL_H
-          #include <linux/types.h>
-          enum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };
-          struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };
-          #endif
-          EOF
+          echo '#ifndef _IP6T_HL_H' > include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#define _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo 'enum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
       - name: Setup Clang 17
         run: |
