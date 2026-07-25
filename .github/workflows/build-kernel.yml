@@ -116,24 +116,18 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Surgical Strike)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (VFS Struct Injection)..."
           SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
           if [ -f "$SUCOMPAT" ]; then
             sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
           fi
           
-          FILE_WRAPPER="drivers/kernelsu/infra/file_wrapper.c"
-          if [ -f "$FILE_WRAPPER" ]; then
-            # Hapus fungsi secara absolut dari deklarasi hingga kurung tutup
-            sed -i '/static int ksu_wrapper_iopoll/,/^}/d' "$FILE_WRAPPER"
-            sed -i '/static int ksu_wrapper_remap_file_range/,/^}/d' "$FILE_WRAPPER"
-            
-            # Bersihkan referensi pemanggilan di dalam struct
-            sed -i '/\.iopoll/d' "$FILE_WRAPPER"
-            sed -i '/\.remap_file_range/d' "$FILE_WRAPPER"
-            sed -i '/ops\.iopoll/d' "$FILE_WRAPPER"
-            sed -i '/ops\.remap_file_range/d' "$FILE_WRAPPER"
-            sed -i '/REMAP_FILE_DEDUP/d' "$FILE_WRAPPER"
+          # [JURUS BARU] Menyuntikkan member struct langsung ke fs.h kernel agar KSU-Next tidak protes!
+          FS_H="include/linux/fs.h"
+          if [ -f "$FS_H" ]; then
+            awk '/^struct file_operations \{/ { print; print "\tssize_t (*remap_file_range)(struct file *, loff_t, struct file *, loff_t, loff_t, unsigned int);\n\tint (*iopoll)(struct kiocb *, bool);"; next }1' "$FS_H" > tmp_fs && mv tmp_fs "$FS_H"
+            sed -i '1i #define REMAP_FILE_DEDUP 1' "$FS_H"
+            echo "fs.h successfully hacked for KSU-Next!"
           fi
 
           echo "4. Patching Samsung Debug Snapshot..."
@@ -142,20 +136,29 @@ jobs:
             sed -i '/ESR_ELx_EC_/d' "$DPM_FILE"
           fi
           
-          echo "5. Global Netfilter Header Case-Sensitivity Fix..."
-          # Fix massal untuk seluruh file header netfilter yang korup (xt_MARK, xt_DSCP, dll)
-          find include/ -iname "xt_*.h" | while read -r file; do
-            dir=$(dirname "$file")
-            base=$(basename "$file")
-            lower_base=$(echo "$base" | tr '[:upper:]' '[:lower:]')
-            if [ "$base" != "$lower_base" ]; then
-              cp -n "$file" "$dir/$lower_base" 2>/dev/null || true
-            fi
-          done
+          echo "5. Global Netfilter Header Missing Files Fix..."
+          mkdir -p "include/linux/netfilter_ipv4"
+          find "include" -name "ipt_*.h" -exec cp -u {} "include/linux/netfilter_ipv4/" \; 2>/dev/null || true
+          
+          # [JURUS BARU] Membuat file header kosong agar include dari file C yang korup tidak crash
+          mkdir -p include/linux/netfilter
+          touch include/linux/netfilter/xt_mark.h
+          touch include/linux/netfilter/xt_dscp.h
           
           XT_MARK="net/netfilter/xt_mark.c"
           if [ -f "$XT_MARK" ]; then
             sed -i '1i #include <linux/types.h>\nstruct xt_mark_tginfo2 { __u32 mark, mask; };\nstruct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' "$XT_MARK"
+          fi
+          
+          # Mengatasi error xt_dscp.h yang hilang di xt_ecn
+          ECN_H="include/uapi/linux/netfilter/xt_ecn.h"
+          if [ -f "$ECN_H" ]; then
+            sed -i 's/#include <linux\/netfilter\/xt_dscp.h>//g' "$ECN_H"
+          fi
+          
+          ECN_C="net/netfilter/xt_ecn.c"
+          if [ -f "$ECN_C" ]; then
+            sed -i '1i #define XT_DSCP_MASK 0xfc' "$ECN_C"
           fi
           
       - name: Setup Clang 17
