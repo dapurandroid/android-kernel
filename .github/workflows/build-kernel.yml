@@ -1,4 +1,4 @@
-name: Build Kernel with KernelSU (Samsung A04s)
+name: Build Kernel with KernelSU-Next (Samsung A04s)
 
 on:
   workflow_dispatch:
@@ -12,9 +12,9 @@ on:
         required: true
         default: 'main'
       kernelsu_tag:
-        description: 'KernelSU tag or "main" for latest'
+        description: 'KernelSU-Next tag or "next" for latest'
         required: false
-        default: 'main'
+        default: 'next'
       create_release:
         description: 'Create GitHub Release'
         required: false
@@ -62,7 +62,6 @@ jobs:
         run: |
           find "$KERNEL_DIR/scripts" -type f \( -name "*.sh" -o -name "gcc-version*" -o -name "clang-*" -o -name "lld-*" -o -name "gcc-plugin*" -o -name "link-vmlinux*" -o -name "mkcompile_h" \) -exec chmod +x {} \;
           find "$KERNEL_DIR/scripts" -type f ! -name "*.c" ! -name "*.h" ! -name "*.py" ! -name "*.txt" ! -name "Makefile" -exec chmod +x {} \;
-          # Fix permission denied untuk script VDSO 
           find "$KERNEL_DIR/arch/arm64/kernel/vdso" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
           echo "Script permissions fixed."
 
@@ -75,7 +74,6 @@ jobs:
             find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(success/d' {} \;
             find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(cc-option/d' {} \;
             sed -i '27,30d' "$MALI_DIR/Kconfig" 2>/dev/null || true
-            echo "Mali GPU Kconfig berhasil dibungkam secara paksa."
           fi
 
       - name: Patch Samsung Knox Security
@@ -83,12 +81,27 @@ jobs:
           echo "Fixing sloppy include paths in Samsung Knox/FIVE..."
           FIVE_DIR="$KERNEL_DIR/security/samsung/five"
           if [ -d "$FIVE_DIR" ]; then
-            # Sapu bersih semua file .c dan .h di folder FIVE agar menggunakan alamat mutlak (absolute path)
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/block/|#include \"$KERNEL_DIR/drivers/block/|g" {} \;
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"security/integrity/|#include \"$KERNEL_DIR/security/integrity/|g" {} \;
-            # Tambahan baru untuk mengatasi file dm.h yang nyangkut di dmverity
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
-            echo "Seluruh file Samsung Knox (FIVE) berhasil divaksin absolute path!"
+          fi
+
+      - name: Patch Samsung Debug & Netfilter
+        run: |
+          echo "Patching Samsung Debug Snapshot..."
+          DPM_FILE="$KERNEL_DIR/lib/debug-snapshot-dpm.c"
+          if [ -f "$DPM_FILE" ]; then
+            sed -i '/ESR_ELx_EC_BREAKPT_LOW/d' "$DPM_FILE"
+            sed -i '/ESR_ELx_EC_BREAKPT_CUR/d' "$DPM_FILE"
+            sed -i '/ESR_ELx_EC_WATCHPT_LOW/d' "$DPM_FILE"
+            sed -i '/ESR_ELx_EC_WATCHPT_CUR/d' "$DPM_FILE"
+            sed -i '/ESR_ELx_EC_BRK64/d' "$DPM_FILE"
+          fi
+          
+          echo "Fixing Netfilter xt_mark include path..."
+          XT_MARK="$KERNEL_DIR/net/netfilter/xt_mark.c"
+          if [ -f "$XT_MARK" ]; then
+            sed -i 's|<linux/netfilter/xt_mark.h>|<uapi/linux/netfilter/xt_mark.h>|g' "$XT_MARK"
           fi
 
       - name: Detect kernel version
@@ -101,24 +114,24 @@ jobs:
           echo "version=$VER.$PATCH.$SUB" >> $GITHUB_OUTPUT
           echo "major=$VER.$PATCH" >> $GITHUB_OUTPUT
 
-      - name: Fetch latest KernelSU version
+      - name: Fetch latest KernelSU-Next version
         id: ksu_info
         run: |
           TAG="${{ github.event.inputs.kernelsu_tag }}"
-          if [ "$TAG" = "main" ] || [ -z "$TAG" ]; then
-            LATEST=$(curl -s https://api.github.com/repos/tiann/KernelSU/releases/latest \
+          if [ "$TAG" = "next" ] || [ -z "$TAG" ]; then
+            LATEST=$(curl -s https://api.github.com/repos/rifsxd/KernelSU-Next/releases/latest \
               | grep '"tag_name"' | cut -d'"' -f4)
-            echo "Latest KernelSU: $LATEST"
+            echo "Latest KernelSU-Next: $LATEST"
             echo "ksu_version=$LATEST" >> $GITHUB_OUTPUT
           else
             echo "ksu_version=$TAG" >> $GITHUB_OUTPUT
           fi
 
-      - name: Integrate KernelSU
+      - name: Integrate KernelSU-Next
         run: |
           cd "$KERNEL_DIR"
           KSU_TAG="${{ steps.ksu_info.outputs.ksu_version }}"
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s "$KSU_TAG"
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s "$KSU_TAG"
           head -5 KernelSU/kernel/Makefile 2>/dev/null || head -5 drivers/kernelsu/Makefile 2>/dev/null
 
       - name: Setup Clang 17
@@ -164,14 +177,13 @@ jobs:
             -e CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE \
             -d CONFIG_KSU_DEBUG
 
-          # Mematikan LTO agar tidak meminta konfirmasi manual saat build
           scripts/config --file "$OUT_DIR/.config" \
             --disable CONFIG_LTO \
             --disable CONFIG_LTO_CLANG \
             --enable CONFIG_LTO_NONE
 
           scripts/config --file "$OUT_DIR/.config" \
-            --set-str CONFIG_LOCALVERSION "-KSU-${{ steps.ksu_info.outputs.ksu_version }}" \
+            --set-str CONFIG_LOCALVERSION "-KSUNext-${{ steps.ksu_info.outputs.ksu_version }}" \
             --disable CONFIG_LOCALVERSION_AUTO
 
           scripts/config --file "$OUT_DIR/.config" \
@@ -184,7 +196,6 @@ jobs:
             --enable CONFIG_STRIP_ASM_SYMS \
             --enable CONFIG_CC_OPTIMIZE_FOR_SIZE
 
-          # yes "" untuk auto-enter jika ada prompt konfigurasi nyasar
           yes "" | make O="$OUT_DIR" ARCH=arm64 CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -195,7 +206,6 @@ jobs:
           cd "$KERNEL_DIR"
           export PATH=$HOME/toolchain/clang/bin:$PATH
 
-          # Mengubah LLVM_IAS=1 menjadi LLVM_IAS=0 untuk mengatasi error Assembly Clang
           make -j$(nproc --all) O="$OUT_DIR" ARCH=arm64 \
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
             OBJCOPY=llvm-objcopy STRIP=llvm-strip \
@@ -231,9 +241,9 @@ jobs:
           import os
           lines = [
             "# AnyKernel3 Ramdisk Mod Script\n",
-            "# Samsung Galaxy A04s (SM-A047F) + KernelSU\n",
+            "# Samsung Galaxy A04s (SM-A047F) + KernelSU-Next\n",
             "properties() { '\n",
-            "kernel.string=Samsung A04s KernelSU Kernel\n",
+            "kernel.string=Samsung A04s KernelSU-Next\n",
             "do.devicecheck=1\n",
             "do.modules=0\n",
             "do.systemless=1\n",
@@ -280,7 +290,7 @@ jobs:
 
           BUILD_DATE=$(date +%Y%m%d-%H%M)
           KSU_VER="${{ steps.ksu_info.outputs.ksu_version }}"
-          ZIP_NAME="SamsungA04s-KernelSU-${KSU_VER}-${BUILD_DATE}.zip"
+          ZIP_NAME="SamsungA04s-KSUNext-${KSU_VER}-${BUILD_DATE}.zip"
           zip -r9 "$GITHUB_WORKSPACE/$ZIP_NAME" . -x '.git*'
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           echo "Packaged $ZIP_NAME ($(du -h $GITHUB_WORKSPACE/$ZIP_NAME | cut -f1))"
@@ -310,14 +320,14 @@ jobs:
         if: github.event.inputs.create_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ksu-${{ steps.ksu_info.outputs.ksu_version }}-build${{ github.run_number }}
-          name: KernelSU ${{ steps.ksu_info.outputs.ksu_version }} - Samsung A04s
+          tag_name: ksu-next-${{ steps.ksu_info.outputs.ksu_version }}-build${{ github.run_number }}
+          name: KernelSU-Next ${{ steps.ksu_info.outputs.ksu_version }} - Samsung A04s
           body: |
-            ## Samsung A04s (SM-A047F) Kernel + KernelSU
+            ## Samsung A04s (SM-A047F) Kernel + KernelSU-Next
 
             | | |
             |---|---|
-            | **KernelSU version** | `${{ steps.ksu_info.outputs.ksu_version }}` |
+            | **KernelSU-Next version** | `${{ steps.ksu_info.outputs.ksu_version }}` |
             | **Kernel version** | `${{ steps.kver.outputs.version }}` |
             | **Kernel source** | [SavedByLight/android_kernel_samsung_a04s](https://github.com/SavedByLight/android_kernel_samsung_a04s) |
             | **Branch** | `${{ github.event.inputs.kernel_branch }}` |
@@ -327,7 +337,7 @@ jobs:
             1. Boot into TWRP / OrangeFox
             2. Flash the ZIP
             3. Reboot to system
-            4. Install KernelSU Manager APK from https://github.com/tiann/KernelSU/releases
+            4. Install KernelSU-Next Manager APK from https://github.com/rifsxd/KernelSU-Next/releases
             5. Open Manager - status should show Working
 
             > Built via GitHub Actions
