@@ -131,17 +131,20 @@ jobs:
             sed -i '/ESR_ELx_EC_BRK64/d' "$DPM_FILE"
           fi
           
-          echo "5. Fixing Netfilter xt_mark case-sensitivity/path issue..."
-          XT_MARK="net/netfilter/xt_mark.c"
-          if [ -f "$XT_MARK" ]; then
-            # Pelacak otomatis file xt_mark.h tanpa peduli huruf besar/kecil
-            REAL_XT=$(find "include" -iname "xt_mark.h" | head -1)
-            if [ -n "$REAL_XT" ]; then
-              ABS_XT="$KERNEL_DIR/$REAL_XT"
-              sed -i "s|#include <linux/netfilter/xt_mark.h>|#include \"$ABS_XT\"|g" "$XT_MARK"
-              sed -i "s|#include <uapi/linux/netfilter/xt_mark.h>|#include \"$ABS_XT\"|g" "$XT_MARK"
-              echo "File xt_mark.h berhasil di-patch secara dinamis!"
-            fi
+          echo "5. Fixing Netfilter xt_mark case-sensitivity (The Clone Method)..."
+          # Menduplikasi file secara fisik agar mesin Linux tidak bingung huruf besar/kecil
+          if [ -d "include/linux/netfilter" ]; then
+            cd "include/linux/netfilter"
+            [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
+            [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
+            cd "$KERNEL_DIR"
+          fi
+          
+          if [ -d "include/uapi/linux/netfilter" ]; then
+            cd "include/uapi/linux/netfilter"
+            [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
+            [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
+            cd "$KERNEL_DIR"
           fi
 
       - name: Setup Clang 17
