@@ -62,5 +62,5 @@
 | Samsung Galaxy A04s | `a04s` | SM-A047F |
 
 ## License
-
+ 
 MIT
