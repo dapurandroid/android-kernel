@@ -116,12 +116,12 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Safe Bypasses)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Safe Bypasses & Translator)..."
           [ -f "drivers/kernelsu/feature/sucompat.c" ] && sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "drivers/kernelsu/feature/sucompat.c"
           [ -f "drivers/kernelsu/infra/su_mount_ns.c" ] && sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "drivers/kernelsu/infra/su_mount_ns.c"
           [ -f "drivers/kernelsu/infra/seccomp_cache.c" ] && sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "drivers/kernelsu/infra/seccomp_cache.c"
           
-          # Membungkam 2 fitur KSU-Next yang tidak disupport Kernel 4.19 (Aman 100%)
+          # Membungkam 2 fitur KSU-Next yang tidak disupport Kernel 4.19
           cat << 'EOF' > drivers/kernelsu/infra/file_wrapper.c
           int ksu_file_wrapper_init(void) { return 0; }
           void ksu_file_wrapper_exit(void) {}
@@ -131,6 +131,10 @@ jobs:
           int ksu_fsnotify_init(void) { return 0; }
           void ksu_fsnotify_exit(void) {}
           EOF
+          
+          # [JURUS BARU] Kamus Penerjemah Bahasa Modern ke Kernel 4.19
+          find drivers/kernelsu -type f -name "*.c" -exec sed -i 's/TWA_RESUME/true/g' {} \;
+          find drivers/kernelsu -type f -name "*.c" -exec sed -i 's/fallthrough;/;/g' {} \;
 
           echo "4. Patching Samsung Debug Snapshot..."
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
@@ -138,7 +142,6 @@ jobs:
           echo "5. Restoring Missing Netfilter Headers (God Mode)..."
           mkdir -p include/linux/netfilter include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
           
-          # Menciptakan ulang xt_mark.h yang hilang
           cat << 'EOF' > include/linux/netfilter/xt_mark.h
           #ifndef _XT_MARK_H
           #define _XT_MARK_H
@@ -148,7 +151,6 @@ jobs:
           #endif
           EOF
           
-          # Menciptakan ulang xt_dscp.h yang hilang
           cat << 'EOF' > include/linux/netfilter/xt_dscp.h
           #ifndef _XT_DSCP_H
           #define _XT_DSCP_H
@@ -160,7 +162,6 @@ jobs:
           #endif
           EOF
           
-          # Menciptakan ulang ipt_ttl.h yang hilang
           cat << 'EOF' > include/linux/netfilter_ipv4/ipt_ttl.h
           #ifndef _IPT_TTL_H
           #define _IPT_TTL_H
@@ -170,7 +171,6 @@ jobs:
           #endif
           EOF
           
-          # Menciptakan ulang ip6t_hl.h yang hilang
           cat << 'EOF' > include/linux/netfilter_ipv6/ip6t_hl.h
           #ifndef _IP6T_HL_H
           #define _IP6T_HL_H
