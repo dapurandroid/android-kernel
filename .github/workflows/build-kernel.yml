@@ -216,41 +216,41 @@ jobs:
         run: |
           mkdir -p $GITHUB_WORKSPACE/ak3out
           python3 - <<'PYEOF'
-import os
-lines = [
-  "# AnyKernel3 Ramdisk Mod Script\n",
-  "# Samsung Galaxy A04s (SM-A047F) + KernelSU\n",
-  "properties() { '\n",
-  "kernel.string=Samsung A04s KernelSU Kernel\n",
-  "do.devicecheck=1\n",
-  "do.modules=0\n",
-  "do.systemless=1\n",
-  "do.cleanup=1\n",
-  "do.cleanuponabort=1\n",
-  "device.name1=a04s\n",
-  "device.name2=a047f\n",
-  "device.name3=SM-A047F\n",
-  "device.name4=a047fxxu\n",
-  "device.name5=a047x\n",
-  "supported.versions=12-14\n",
-  "supported.patchlevels=\n",
-  "'; }\n",
-  "block=auto;\n",
-  "is_slot_device=0;\n",
-  "ramdisk_compression=auto;\n",
-  "patch_vbmeta_flag=auto;\n",
-  ". tools/ak3-core.sh;\n",
-  "split_boot;\n",
-  "if [ -f \"$AKHOME/dtb.img\" ]; then\n",
-  "  flash_dtb;\n",
-  "fi\n",
-  "flash_boot;\n",
-]
-out = os.path.join(os.environ['GITHUB_WORKSPACE'], 'ak3out', 'anykernel.sh')
-with open(out, 'w') as f:
-  f.writelines(lines)
-print(f'Written: {out}')
-PYEOF
+          import os
+          lines = [
+            "# AnyKernel3 Ramdisk Mod Script\n",
+            "# Samsung Galaxy A04s (SM-A047F) + KernelSU\n",
+            "properties() { '\n",
+            "kernel.string=Samsung A04s KernelSU Kernel\n",
+            "do.devicecheck=1\n",
+            "do.modules=0\n",
+            "do.systemless=1\n",
+            "do.cleanup=1\n",
+            "do.cleanuponabort=1\n",
+            "device.name1=a04s\n",
+            "device.name2=a047f\n",
+            "device.name3=SM-A047F\n",
+            "device.name4=a047fxxu\n",
+            "device.name5=a047x\n",
+            "supported.versions=12-14\n",
+            "supported.patchlevels=\n",
+            "'; }\n",
+            "block=auto;\n",
+            "is_slot_device=0;\n",
+            "ramdisk_compression=auto;\n",
+            "patch_vbmeta_flag=auto;\n",
+            ". tools/ak3-core.sh;\n",
+            "split_boot;\n",
+            "if [ -f \"$AKHOME/dtb.img\" ]; then\n",
+            "  flash_dtb;\n",
+            "fi\n",
+            "flash_boot;\n",
+          ]
+          out = os.path.join(os.environ['GITHUB_WORKSPACE'], 'ak3out', 'anykernel.sh')
+          with open(out, 'w') as f:
+            f.writelines(lines)
+          print(f'Written: {out}')
+          PYEOF
 
       - name: Package with AnyKernel3
         run: |
@@ -322,4 +322,3 @@ PYEOF
           files: ${{ env.ZIP_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # test
