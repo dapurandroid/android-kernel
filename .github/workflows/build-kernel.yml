@@ -116,7 +116,7 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Clean Syntax)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Safe Struct Deletion)..."
           SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
           if [ -f "$SUCOMPAT" ]; then
             sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
@@ -124,13 +124,12 @@ jobs:
           
           FILE_WRAPPER="drivers/kernelsu/infra/file_wrapper.c"
           if [ -f "$FILE_WRAPPER" ]; then
-            # Sembunyikan fungsi dan struct yang tidak didukung kernel 4.19 tanpa merusak syntax C
-            sed -i '/ksu_wrapper_iopoll/,/^}/ s/^/\/\//' "$FILE_WRAPPER"
-            sed -i '/ksu_wrapper_remap_file_range/,/^}/ s/^/\/\//' "$FILE_WRAPPER"
-            sed -i '/\.iopoll/ s/^/\/\//' "$FILE_WRAPPER"
-            sed -i '/\.remap_file_range/ s/^/\/\//' "$FILE_WRAPPER"
-            sed -i '/p->ops\.iopoll/ s/^/\/\//' "$FILE_WRAPPER"
-            sed -i '/p->ops\.remap_file_range/ s/^/\/\//' "$FILE_WRAPPER"
+            # Hapus HANYA baris pemanggilan anggota struct yang tidak didukung, 
+            # biarkan fungsinya utuh agar syntax kurung kurawal {} tidak jebol.
+            sed -i '/\.iopoll/d' "$FILE_WRAPPER"
+            sed -i '/\.remap_file_range/d' "$FILE_WRAPPER"
+            sed -i '/->iopoll/d' "$FILE_WRAPPER"
+            sed -i '/->remap_file_range/d' "$FILE_WRAPPER"
             sed -i '/REMAP_FILE_DEDUP/d' "$FILE_WRAPPER"
             echo "KSU-Next file_wrapper.c syntactically secured!"
           fi
@@ -144,16 +143,17 @@ jobs:
           echo "5. Global Netfilter Header Bridge & Case-Sensitivity Fix..."
           mkdir -p "include/linux/netfilter_ipv4"
           find "include" -name "ipt_*.h" -exec cp -u {} "include/linux/netfilter_ipv4/" \; 2>/dev/null || true
-          find "arch" -name "ipt_*.h" -exec cp -u {} "include/linux/netfilter_ipv4/" \; 2>/dev/null || true
+          
+          # Vaksin khusus untuk masalah huruf besar/kecil (xt_MARK.h vs xt_mark.h)
+          for dir in "include/uapi/linux/netfilter" "include/linux/netfilter"; do
+            if [ -d "$dir" ]; then
+              [ -f "$dir/xt_MARK.h" ] && cp "$dir/xt_MARK.h" "$dir/xt_mark.h" 2>/dev/null || true
+              [ -f "$dir/xt_mark.h" ] && cp "$dir/xt_mark.h" "$dir/xt_MARK.h" 2>/dev/null || true
+            fi
+          done
           
           XT_MARK="net/netfilter/xt_mark.c"
           if [ -f "$XT_MARK" ]; then
-            # Pelacakan absolut untuk xt_mark.h tanpa peduli huruf besar/kecil
-            REAL_XT=$(find include/ -iname "xt_mark.h" | head -1)
-            if [ -n "$REAL_XT" ]; then
-              sed -i "s|<linux/netfilter/xt_mark.h>|\"$KERNEL_DIR/$REAL_XT\"|g" "$XT_MARK"
-            fi
-            # Injeksi tipe data dasar ke baris paling atas
             sed -i '1i #include <linux/types.h>\nstruct xt_mark_tginfo2 { __u32 mark, mask; };\nstruct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' "$XT_MARK"
             echo "xt_mark.c successfully patched!"
           fi
