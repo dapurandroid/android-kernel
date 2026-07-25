@@ -62,7 +62,7 @@ jobs:
         run: |
           find "$KERNEL_DIR/scripts" -type f \( -name "*.sh" -o -name "gcc-version*" -o -name "clang-*" -o -name "lld-*" -o -name "gcc-plugin*" -o -name "link-vmlinux*" -o -name "mkcompile_h" \) -exec chmod +x {} \;
           find "$KERNEL_DIR/scripts" -type f ! -name "*.c" ! -name "*.h" ! -name "*.py" ! -name "*.txt" ! -name "Makefile" -exec chmod +x {} \;
-          # Tambahan: Fix permission denied untuk script VDSO 
+          # Fix permission denied untuk script VDSO 
           find "$KERNEL_DIR/arch/arm64/kernel/vdso" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
           echo "Script permissions fixed."
 
@@ -71,13 +71,21 @@ jobs:
           echo "Applying aggressive Mali Kconfig patch..."
           MALI_DIR="$KERNEL_DIR/drivers/gpu/arm"
           if [ -d "$MALI_DIR" ]; then
-            # Hapus paksa semua baris yang mengandung pemanggilan script $() di seluruh Kconfig GPU
             find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(shell/d' {} \;
             find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(success/d' {} \;
             find "$MALI_DIR" -type f -name "Kconfig" -exec sed -i '/\$(cc-option/d' {} \;
-            # Hapus baris 27-30 secara spesifik pada Kconfig utama jika formatnya aneh
             sed -i '27,30d' "$MALI_DIR/Kconfig" 2>/dev/null || true
             echo "Mali GPU Kconfig berhasil dibungkam secara paksa."
+          fi
+
+      - name: Patch Samsung Knox Security
+        run: |
+          echo "Fixing sloppy include paths in Samsung Knox/FIVE..."
+          FIVE_PORT="$KERNEL_DIR/security/samsung/five/five_porting.h"
+          if [ -f "$FIVE_PORT" ]; then
+            # Memaksa compiler membaca file loop.h dari alamat mutlak (absolute path)
+            sed -i "s|#include \"drivers/block/loop.h\"|#include \"$KERNEL_DIR/drivers/block/loop.h\"|g" "$FIVE_PORT"
+            echo "File five_porting.h berhasil di-patch!"
           fi
 
       - name: Detect kernel version
@@ -153,7 +161,7 @@ jobs:
             -e CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE \
             -d CONFIG_KSU_DEBUG
 
-          # Tambahan: Mematikan LTO agar tidak meminta konfirmasi manual saat build
+          # Mematikan LTO agar tidak meminta konfirmasi manual saat build
           scripts/config --file "$OUT_DIR/.config" \
             --disable CONFIG_LTO \
             --disable CONFIG_LTO_CLANG \
@@ -173,7 +181,7 @@ jobs:
             --enable CONFIG_STRIP_ASM_SYMS \
             --enable CONFIG_CC_OPTIMIZE_FOR_SIZE
 
-          # Tambahan: yes "" untuk auto-enter jika ada prompt konfigurasi nyasar
+          # yes "" untuk auto-enter jika ada prompt konfigurasi nyasar
           yes "" | make O="$OUT_DIR" ARCH=arm64 CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -184,7 +192,7 @@ jobs:
           cd "$KERNEL_DIR"
           export PATH=$HOME/toolchain/clang/bin:$PATH
 
-          # Tambahan: Mengubah LLVM_IAS=1 menjadi LLVM_IAS=0 untuk mengatasi error arch/arm64/kernel/entry.S
+          # Mengubah LLVM_IAS=1 menjadi LLVM_IAS=0 untuk mengatasi error Assembly Clang
           make -j$(nproc --all) O="$OUT_DIR" ARCH=arm64 \
             CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm \
             OBJCOPY=llvm-objcopy STRIP=llvm-strip \
