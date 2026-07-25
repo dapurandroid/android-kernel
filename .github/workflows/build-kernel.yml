@@ -116,10 +116,17 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Perfect Type Match & Seccomp)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Headers & Structs)..."
           SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
           if [ -f "$SUCOMPAT" ]; then
             sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
+          fi
+          
+          # Fix error mount.h di KernelSU-Next
+          SU_MOUNT="drivers/kernelsu/infra/su_mount_ns.c"
+          if [ -f "$SU_MOUNT" ]; then
+            sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$SU_MOUNT"
+            echo "su_mount_ns.c successfully patched!"
           fi
           
           FS_H="include/linux/fs.h"
@@ -128,11 +135,9 @@ jobs:
             sed -i '1i #define REMAP_FILE_DEDUP 1' "$FS_H"
           fi
           
-          # [BARU] Patch untuk mengatasi error SECCOMP_ARCH_NATIVE_NR di KSU-Next
           SECCOMP_C="drivers/kernelsu/infra/seccomp_cache.c"
           if [ -f "$SECCOMP_C" ]; then
             sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$SECCOMP_C"
-            echo "seccomp_cache.c successfully patched!"
           fi
 
           echo "4. Patching Samsung Debug Snapshot..."
@@ -142,8 +147,8 @@ jobs:
           fi
           
           echo "5. Global Netfilter Fix (Bridging UAPI Headers)..."
-          # Perbaikan huruf besar/kecil massal
-          find include/ -iname "xt_*.h" | while read -r file; do
+          # Perluasan pencarian huruf besar/kecil (mencakup ipt_ dan ip6t_)
+          find include/ -iname "*.h" | grep -iE 'xt_|ipt_|ip6t_' | while read -r file; do
             dir=$(dirname "$file")
             base=$(basename "$file")
             lower_base=$(echo "$base" | tr '[:upper:]' '[:lower:]')
@@ -151,11 +156,6 @@ jobs:
               cp -n "$file" "$dir/$lower_base" 2>/dev/null || true
             fi
           done
-          
-          # [BARU] Copy seluruh header Netfilter yang hilang dari uapi ke jalur utama
-          mkdir -p include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
-          cp -n include/uapi/linux/netfilter_ipv4/*.h include/linux/netfilter_ipv4/ 2>/dev/null || true
-          cp -n include/uapi/linux/netfilter_ipv6/*.h include/linux/netfilter_ipv6/ 2>/dev/null || true
           
           XT_MARK="net/netfilter/xt_mark.c"
           if [ -f "$XT_MARK" ]; then
@@ -169,6 +169,14 @@ jobs:
           ECN_C="net/netfilter/xt_ecn.c"
           if [ -f "$ECN_C" ]; then
             sed -i '1i #define XT_DSCP_MASK 0xfc' "$ECN_C"
+          fi
+          
+          # Fix error ipt_ttl.h dan ip6t_hl.h di xt_hl.c
+          HL_C="net/netfilter/xt_hl.c"
+          if [ -f "$HL_C" ]; then
+            sed -i 's|<linux/netfilter_ipv4/ipt_ttl.h>|<uapi/linux/netfilter_ipv4/ipt_ttl.h>|g' "$HL_C"
+            sed -i 's|<linux/netfilter_ipv6/ip6t_hl.h>|<uapi/linux/netfilter_ipv6/ip6t_hl.h>|g' "$HL_C"
+            echo "xt_hl.c successfully patched!"
           fi
           
       - name: Setup Clang 17
