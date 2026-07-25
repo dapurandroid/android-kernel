@@ -134,23 +134,18 @@ jobs:
           echo "4. Applying Hybrid SELinux Pass-through for Kernel 4.19..."
           SELINUX_DIR=$(find -L drivers/kernelsu -type d -name "selinux" | head -n 1)
           if [ -n "$SELINUX_DIR" ]; then
-            # Membuat jembatan kompatibilitas agar fungsi sepolicy KSU bisa mengait ke kernel 4.19 tanpa error member
-            cat << 'EOF' > "$SELINUX_DIR/ksu_legacy_selinux.h"
-            #ifndef __KSU_LEGACY_SELINUX_H
-            #define __KSU_LEGACY_SELINUX_H
-            #include <linux/types.h>
-            // Menerjemahkan fungsi modern ke fungsi aman kernel lawas
-            #define policydb_load_isids(...) 0
-            static inline void *ksu_dup_sepolicy(void *old) { return NULL; }
-            static inline int ksu_load_sepolicy(void *data, size_t len) { return 0; }
-            #endif
-            EOF
+            echo '#ifndef __KSU_LEGACY_SELINUX_H' > "$SELINUX_DIR/ksu_legacy_selinux.h"
+            echo '#define __KSU_LEGACY_SELINUX_H' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
+            echo '#include <linux/types.h>' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
+            echo '#define policydb_load_isids(...) 0' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
+            echo 'static inline void *ksu_dup_sepolicy(void *old) { return NULL; }' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
+            echo 'static inline int ksu_load_sepolicy(void *data, size_t len) { return 0; }' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
+            echo '#endif' >> "$SELINUX_DIR/ksu_legacy_selinux.h"
             
             for f in $(find -L "$SELINUX_DIR" -type f -name "*.c" 2>/dev/null); do
               sed -i '1i #include "ksu_legacy_selinux.h"' "$f"
             done
             
-            # Membersihkan bagian rules.c dari pemanggilan variabel struct policy yang tidak ada
             RULES_C="$SELINUX_DIR/rules.c"
             if [ -f "$RULES_C" ]; then
               sed -i 's/selinux_state\.policy/NULL/g' "$RULES_C"
@@ -187,7 +182,7 @@ jobs:
           echo 'struct ipt_ttl_info { __u8 mode; __u8 ttl; };' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo '#endif' >> include/linux/netfilter_ipv4/ipt_ttl.h
           
-          echo '#ifndef _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#ifndef _IP6T_HL_H' > include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#define _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#include <linux/types.h>' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo 'enum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };' >> include/linux/netfilter_ipv6/ip6t_hl.h
