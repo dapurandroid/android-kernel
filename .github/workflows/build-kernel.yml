@@ -116,25 +116,25 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Ultimate Symlink-Proof Method)..."
-          find -L drivers/kernelsu -type f -name "sucompat.c" -exec sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' {} \;
-          find -L drivers/kernelsu -type f -name "su_mount_ns.c" -exec sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' {} \;
-          find -L drivers/kernelsu -type f -name "seccomp_cache.c" -exec sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' {} \;
-          find -L drivers/kernelsu -type f -name "allowlist.c" -exec sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do {} while(0)\n#endif' {} \;
-          
-          find -L drivers/kernelsu -type f -name "app_profile.c" -exec sed -i '/filter_count/d' {} \;
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Anti-Injection Method)..."
+          # Menggunakan for-loop untuk menghindari jebakan karakter {} pada perintah find
+          for f in $(find -L drivers/kernelsu -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
+          for f in $(find -L drivers/kernelsu -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
+          for f in $(find -L drivers/kernelsu -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
+          for f in $(find -L drivers/kernelsu -type f -name "allowlist.c" 2>/dev/null); do sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do { } while(0)\n#endif' "$f"; done
+          for f in $(find -L drivers/kernelsu -type f -name "app_profile.c" 2>/dev/null); do sed -i '/filter_count/d' "$f"; done
           
           cat << 'EOF' > tmp_wrapper.c
           int ksu_file_wrapper_init(void) { return 0; }
           void ksu_file_wrapper_exit(void) {}
           EOF
-          find -L drivers/kernelsu -type f -name "file_wrapper.c" -exec cp tmp_wrapper.c {} \;
+          for f in $(find -L drivers/kernelsu -type f -name "file_wrapper.c" 2>/dev/null); do cp tmp_wrapper.c "$f"; done
           
           cat << 'EOF' > tmp_fsnotify.c
           int ksu_fsnotify_init(void) { return 0; }
           void ksu_fsnotify_exit(void) {}
           EOF
-          find -L drivers/kernelsu -type f -name "pkg_observer.c" -exec cp tmp_fsnotify.c {} \;
+          for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_fsnotify.c "$f"; done
 
           echo "4. Patching Samsung Debug Snapshot..."
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
