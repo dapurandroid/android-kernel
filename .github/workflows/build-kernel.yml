@@ -116,20 +116,19 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Fixing Headers & Declarations)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Fixing Lock Headers)..."
           for f in $(find -L drivers/kernelsu -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "allowlist.c" 2>/dev/null); do sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do { } while(0)\n#endif' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "app_profile.c" 2>/dev/null); do sed -i '/filter_count/d' "$f"; done
           
-          # FIX: Mengganti minmax.h ke kernel.h
           find -L drivers/kernelsu -type f -name "*.c" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
           find -L drivers/kernelsu -type f -name "*.h" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
           
-          # FIX: Deklarasi tasklist_lock dan init_task di dispatch.c
+          # FIX: Urutan header disesuaikan agar spinlock/rwlock terbaca sebelum rwlock_t dideklarasikan
           for f in $(find -L drivers/kernelsu -type f -name "dispatch.c" 2>/dev/null); do
-            sed -i '1i extern struct task_struct init_task;\nextern rwlock_t tasklist_lock;\n#include <linux/sched/task.h>\n#include <linux/sched/signal.h>' "$f"
+            sed -i '1i #include <linux/spinlock.h>\n#include <linux/sched/task.h>\n#include <linux/sched/signal.h>\nextern struct task_struct init_task;\nextern rwlock_t tasklist_lock;' "$f"
           done
           
           echo "int ksu_file_wrapper_init(void) { return 0; }" > tmp_w.c
@@ -176,14 +175,14 @@ jobs:
           echo 'struct xt_dscp_info { __u8 dscp; __u8 invert; };' >> include/linux/netfilter/xt_dscp.h
           echo '#endif' >> include/linux/netfilter/xt_dscp.h
           
-          echo '#ifndef _IPT_TTL_H' > include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#ifndef _IPT_TTL_H' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo '#define _IPT_TTL_H' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo '#include <linux/types.h>' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo 'enum { IPT_TTL_EQ = 0, IPT_TTL_NE, IPT_TTL_LT, IPT_TTL_GT };' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo 'struct ipt_ttl_info { __u8 mode; __u8 ttl; };' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo '#endif' >> include/linux/netfilter_ipv4/ipt_ttl.h
           
-          echo '#ifndef _IP6T_HL_H' > include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#ifndef _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#define _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#include <linux/types.h>' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo 'enum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };' >> include/linux/netfilter_ipv6/ip6t_hl.h
