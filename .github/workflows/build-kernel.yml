@@ -131,25 +131,31 @@ jobs:
           echo "void ksu_fsnotify_exit(void) {}" >> tmp_f.c
           for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_f.c "$f"; done
 
-          echo "4. Patching KernelSU SELinux for Samsung 4.19..."
+          echo "4. Patching KernelSU SELinux for Samsung 4.19 (Aligned Hack)..."
           SELINUX_DIR=$(find -L drivers/kernelsu -type d -name "selinux" | head -n 1)
           if [ -n "$SELINUX_DIR" ]; then
             echo '#ifndef _KSU_419_SELINUX_H' > "$SELINUX_DIR/tmp_selinux_hack.h"
             echo '#define _KSU_419_SELINUX_H' >> "$SELINUX_DIR/tmp_selinux_hack.h"
             echo '#include <linux/mutex.h>' >> "$SELINUX_DIR/tmp_selinux_hack.h"
             echo 'struct selinux_policy { int policydb; void *sidtab; int latest_granting; };' >> "$SELINUX_DIR/tmp_selinux_hack.h"
-            echo 'struct ksu_dummy_state_struct { struct selinux_policy *policy; struct mutex policy_mutex; };' >> "$SELINUX_DIR/tmp_selinux_hack.h"
-            echo 'extern struct ksu_dummy_state_struct ksu_dummy_state;' >> "$SELINUX_DIR/tmp_selinux_hack.h"
-            echo '#define selinux_state ksu_dummy_state' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            # Menyelaraskan nama struct agar kompatibel dengan tipe data asli kernel
+            echo 'struct selinux_state { struct selinux_policy *policy; struct mutex policy_mutex; };' >> "$SELINUX_DIR/tmp_selinux_hack.h"
+            echo 'extern struct selinux_state ksu_dummy_state;' >> "$SELINUX_DIR/tmp_selinux_hack.h"
             echo '#define policydb_load_isids(...) 0' >> "$SELINUX_DIR/tmp_selinux_hack.h"
             echo '#endif' >> "$SELINUX_DIR/tmp_selinux_hack.h"
             
             for f in $(find -L "$SELINUX_DIR" -type f -name "*.c" 2>/dev/null); do
+              # Jangan pasang makro pengganti di selinux.c agar tidak merusak header bawaan kernel
+              if [ "$(basename "$f")" != "selinux.c" ]; then
+                sed -i '1i #define selinux_state ksu_dummy_state' "$f"
+              fi
               sed -i '1i #include "tmp_selinux_hack.h"' "$f"
             done
+            
             for f in $(find -L "$SELINUX_DIR" -type f -name "rules.c" 2>/dev/null); do
-              sed -i '1i struct ksu_dummy_state_struct ksu_dummy_state;' "$f"
+              sed -i '1i struct selinux_state ksu_dummy_state;' "$f"
             done
+            
             for f in $(find -L "$SELINUX_DIR" -type f -name "sepolicy.c" 2>/dev/null); do
               sed -i '/struct selinux_policy \*ksu_dup_sepolicy/a \    if (!old_pol) return NULL;' "$f"
             done
@@ -177,14 +183,14 @@ jobs:
           echo 'struct xt_dscp_info { __u8 dscp; __u8 invert; };' >> include/linux/netfilter/xt_dscp.h
           echo '#endif' >> include/linux/netfilter/xt_dscp.h
           
-          echo '#ifndef _IPT_TTL_H' > include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#ifndef _IPT_TTL_H' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo '#define _IPT_TTL_H' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo '#include <linux/types.h>' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo 'enum { IPT_TTL_EQ = 0, IPT_TTL_NE, IPT_TTL_LT, IPT_TTL_GT };' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo 'struct ipt_ttl_info { __u8 mode; __u8 ttl; };' >> include/linux/netfilter_ipv4/ipt_ttl.h
           echo '#endif' >> include/linux/netfilter_ipv4/ipt_ttl.h
           
-          echo '#ifndef _IP6T_HL_H' > include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#ifndef _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#define _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#include <linux/types.h>' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo 'enum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };' >> include/linux/netfilter_ipv6/ip6t_hl.h
