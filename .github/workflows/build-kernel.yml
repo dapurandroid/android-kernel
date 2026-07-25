@@ -117,7 +117,6 @@ jobs:
           fi
 
           echo "3. Patching KernelSU-Next for Kernel 4.19 (Anti-Injection Method)..."
-          # Menggunakan for-loop untuk menghindari jebakan karakter {} pada perintah find
           for f in $(find -L drivers/kernelsu -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
@@ -136,10 +135,45 @@ jobs:
           EOF
           for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_fsnotify.c "$f"; done
 
-          echo "4. Patching Samsung Debug Snapshot..."
+          echo "4. Patching KernelSU SELinux for Samsung 4.19 (God Mode)..."
+          SELINUX_DIR=$(find -L drivers/kernelsu -type d -name "selinux" | head -n 1)
+          if [ -n "$SELINUX_DIR" ]; then
+            cat << 'EOF' > "$SELINUX_DIR/tmp_selinux_hack.h"
+            #ifndef _KSU_419_SELINUX_H
+            #define _KSU_419_SELINUX_H
+            #include <linux/mutex.h>
+            struct selinux_policy {
+                int policydb;
+                void *sidtab;
+                int latest_granting;
+            };
+            struct ksu_dummy_state_struct {
+                struct selinux_policy *policy;
+                struct mutex policy_mutex;
+            };
+            extern struct ksu_dummy_state_struct ksu_dummy_state;
+            #define selinux_state ksu_dummy_state
+            #define policydb_load_isids(...) 0
+            #endif
+            EOF
+            
+            for f in $(find -L "$SELINUX_DIR" -type f -name "*.c" 2>/dev/null); do
+              sed -i '1i #include "tmp_selinux_hack.h"' "$f"
+            done
+            
+            for f in $(find -L "$SELINUX_DIR" -type f -name "rules.c" 2>/dev/null); do
+              sed -i '1i struct ksu_dummy_state_struct ksu_dummy_state;' "$f"
+            done
+            
+            for f in $(find -L "$SELINUX_DIR" -type f -name "sepolicy.c" 2>/dev/null); do
+              sed -i '/struct selinux_policy \*ksu_dup_sepolicy/a \    if (!old_pol) return NULL;' "$f"
+            done
+          fi
+
+          echo "5. Patching Samsung Debug Snapshot..."
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
           
-          echo "5. Restoring Missing Netfilter Headers (God Mode)..."
+          echo "6. Restoring Missing Netfilter Headers..."
           mkdir -p include/linux/netfilter include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
           
           cat << 'EOF' > include/linux/netfilter/xt_mark.h
