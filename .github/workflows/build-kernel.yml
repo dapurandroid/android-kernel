@@ -81,11 +81,12 @@ jobs:
       - name: Patch Samsung Knox Security
         run: |
           echo "Fixing sloppy include paths in Samsung Knox/FIVE..."
-          FIVE_PORT="$KERNEL_DIR/security/samsung/five/five_porting.h"
-          if [ -f "$FIVE_PORT" ]; then
-            # Memaksa compiler membaca file loop.h dari alamat mutlak (absolute path)
-            sed -i "s|#include \"drivers/block/loop.h\"|#include \"$KERNEL_DIR/drivers/block/loop.h\"|g" "$FIVE_PORT"
-            echo "File five_porting.h berhasil di-patch!"
+          FIVE_DIR="$KERNEL_DIR/security/samsung/five"
+          if [ -d "$FIVE_DIR" ]; then
+            # Sapu bersih semua file .c dan .h di folder FIVE agar menggunakan alamat mutlak (absolute path)
+            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/block/|#include \"$KERNEL_DIR/drivers/block/|g" {} \;
+            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"security/integrity/|#include \"$KERNEL_DIR/security/integrity/|g" {} \;
+            echo "Seluruh file Samsung Knox (FIVE) berhasil divaksin absolute path!"
           fi
 
       - name: Detect kernel version
