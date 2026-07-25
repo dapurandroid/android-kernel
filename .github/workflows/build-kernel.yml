@@ -116,35 +116,51 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (pgtable.h)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19..."
           SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
           if [ -f "$SUCOMPAT" ]; then
             sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
-            echo "pgtable.h patched for older kernels!"
+          fi
+          
+          # [BARU] Menambal fitur overlayfs modern yang tidak ada di Kernel 4.19
+          FILE_WRAPPER="drivers/kernelsu/infra/file_wrapper.c"
+          if [ -f "$FILE_WRAPPER" ]; then
+            sed -i 's/orig->f_op->iopoll/0; \/\//g' "$FILE_WRAPPER"
+            sed -i 's/REMAP_FILE_DEDUP/0/g' "$FILE_WRAPPER"
+            sed -i 's/orig->f_op->remap_file_range/0; \/\//g' "$FILE_WRAPPER"
+            sed -i 's/fp->f_op->iopoll/0/g' "$FILE_WRAPPER"
+            sed -i 's/fp->f_op->remap_file_range/0/g' "$FILE_WRAPPER"
+            echo "KSU-Next file_wrapper.c berhasil di-bypass!"
           fi
 
           echo "4. Patching Samsung Debug Snapshot..."
           DPM_FILE="lib/debug-snapshot-dpm.c"
           if [ -f "$DPM_FILE" ]; then
-            sed -i '/ESR_ELx_EC_BREAKPT/d' "$DPM_FILE"
-            sed -i '/ESR_ELx_EC_WATCHPT/d' "$DPM_FILE"
-            sed -i '/ESR_ELx_EC_BRK64/d' "$DPM_FILE"
+            # [BARU] Menghapus massal seluruh baris yang mengandung error ESR_ELx_EC
+            sed -i '/ESR_ELx_EC_/d' "$DPM_FILE"
+            echo "Samsung Debug Snapshot berhasil di-Nuke!"
           fi
           
-          echo "5. Fixing Netfilter xt_mark case-sensitivity (The Clone Method)..."
-          # Menduplikasi file secara fisik agar mesin Linux tidak bingung huruf besar/kecil
-          if [ -d "include/linux/netfilter" ]; then
-            cd "include/linux/netfilter"
-            [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
-            [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
-            cd "$KERNEL_DIR"
-          fi
-          
-          if [ -d "include/uapi/linux/netfilter" ]; then
-            cd "include/uapi/linux/netfilter"
-            [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
-            [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
-            cd "$KERNEL_DIR"
+          echo "5. Fixing Netfilter xt_mark Case-Insensitive Repo Bug..."
+          XT_MARK="net/netfilter/xt_mark.c"
+          if [ -f "$XT_MARK" ]; then
+            # Mengembalikan clone method agar include tetap bekerja
+            if [ -d "include/linux/netfilter" ]; then
+              cd "include/linux/netfilter"
+              [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
+              [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
+              cd "$KERNEL_DIR"
+            fi
+            if [ -d "include/uapi/linux/netfilter" ]; then
+              cd "include/uapi/linux/netfilter"
+              [ -f xt_MARK.h ] && [ ! -f xt_mark.h ] && cp xt_MARK.h xt_mark.h || true
+              [ -f xt_mark.h ] && [ ! -f xt_MARK.h ] && cp xt_mark.h xt_MARK.h || true
+              cd "$KERNEL_DIR"
+            fi
+            
+            # [BARU] Menyuntikkan struktur C secara paksa ke baris pertama (1i)
+            sed -i '1i struct xt_mark_tginfo2 { __u32 mark, mask; };\nstruct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' "$XT_MARK"
+            echo "xt_mark.c di-patch dengan definisi struct manual!"
           fi
 
       - name: Setup Clang 17
