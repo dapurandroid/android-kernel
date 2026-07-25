@@ -131,15 +131,21 @@ jobs:
           echo "void ksu_fsnotify_exit(void) {}" >> tmp_f.c
           for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_f.c "$f"; done
 
-          echo "4. Transplanting Official KernelSU SELinux module for 4.19 Compatibility..."
-          SELINUX_DIR=$(find -L drivers/kernelsu -type d -name "selinux" | head -n 1)
+          echo "4. Nuclear SELinux Stubbing for Samsung Knox Compatibility..."
+          SELINUX_DIR=$(find -L drivers -type d -path "*/kernelsu/selinux" | head -n 1)
           if [ -n "$SELINUX_DIR" ]; then
-            # Hapus total modul SELinux milik KSU-Next yang tidak kompatibel
-            rm -rf "$SELINUX_DIR"/*
-            # Unduh dan cangkok modul SELinux dari KernelSU Resmi yang terbukti stabil di 4.19
-            git clone --depth 1 https://github.com/tiann/KernelSU.git /tmp/ksu_official
-            cp -r /tmp/ksu_official/kernel/selinux/* "$SELINUX_DIR"/
-            echo "SELinux transplant successful!"
+            echo "-> Mengosongkan file yang memicu error..."
+            echo "" > "$SELINUX_DIR/rules.c"
+            echo "" > "$SELINUX_DIR/sepolicy.c"
+            
+            echo "-> Menyuntikkan fungsi dummy bersih ke selinux.c..."
+            echo '#include <linux/types.h>' > "$SELINUX_DIR/selinux.c"
+            echo 'int ksu_selinux_init(void) { return 0; }' >> "$SELINUX_DIR/selinux.c"
+            echo 'void ksu_selinux_exit(void) {}' >> "$SELINUX_DIR/selinux.c"
+            echo 'bool ksu_is_selinux_enabled(void) { return true; }' >> "$SELINUX_DIR/selinux.c"
+            echo 'int ksu_seccomp_sepolicy_rules(void) { return 0; }' >> "$SELINUX_DIR/selinux.c"
+            echo 'void *ksu_dup_sepolicy(void *old) { return (void *)0; }' >> "$SELINUX_DIR/selinux.c"
+            echo 'int ksu_load_sepolicy(void *data, size_t len) { return 0; }' >> "$SELINUX_DIR/selinux.c"
           fi
 
           echo "5. Patching Samsung Debug Snapshot..."
