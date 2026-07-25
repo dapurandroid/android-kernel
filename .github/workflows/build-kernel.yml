@@ -116,7 +116,7 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Perfect Type Match)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Perfect Type Match & Seccomp)..."
           SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
           if [ -f "$SUCOMPAT" ]; then
             sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
@@ -124,9 +124,15 @@ jobs:
           
           FS_H="include/linux/fs.h"
           if [ -f "$FS_H" ]; then
-            # Mengganti ssize_t menjadi loff_t agar 100% cocok dengan permintaan KSU-Next
             awk '/^struct file_operations \{/ { print; print "\tloff_t (*remap_file_range)(struct file *, loff_t, struct file *, loff_t, loff_t, unsigned int);\n\tint (*iopoll)(struct kiocb *, bool);"; next }1' "$FS_H" > tmp_fs && mv tmp_fs "$FS_H"
             sed -i '1i #define REMAP_FILE_DEDUP 1' "$FS_H"
+          fi
+          
+          # [BARU] Patch untuk mengatasi error SECCOMP_ARCH_NATIVE_NR di KSU-Next
+          SECCOMP_C="drivers/kernelsu/infra/seccomp_cache.c"
+          if [ -f "$SECCOMP_C" ]; then
+            sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$SECCOMP_C"
+            echo "seccomp_cache.c successfully patched!"
           fi
 
           echo "4. Patching Samsung Debug Snapshot..."
@@ -135,7 +141,7 @@ jobs:
             sed -i '/ESR_ELx_EC_/d' "$DPM_FILE"
           fi
           
-          echo "5. Global Netfilter Fix (Absolute Injection)..."
+          echo "5. Global Netfilter Fix (Bridging UAPI Headers)..."
           # Perbaikan huruf besar/kecil massal
           find include/ -iname "xt_*.h" | while read -r file; do
             dir=$(dirname "$file")
@@ -146,13 +152,16 @@ jobs:
             fi
           done
           
-          # Injeksi xt_mark
+          # [BARU] Copy seluruh header Netfilter yang hilang dari uapi ke jalur utama
+          mkdir -p include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
+          cp -n include/uapi/linux/netfilter_ipv4/*.h include/linux/netfilter_ipv4/ 2>/dev/null || true
+          cp -n include/uapi/linux/netfilter_ipv6/*.h include/linux/netfilter_ipv6/ 2>/dev/null || true
+          
           XT_MARK="net/netfilter/xt_mark.c"
           if [ -f "$XT_MARK" ]; then
             sed -i '1i #include <linux/types.h>\nstruct xt_mark_tginfo2 { __u32 mark, mask; };\nstruct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' "$XT_MARK"
           fi
           
-          # Injeksi xt_ecn
           ECN_H="include/uapi/linux/netfilter/xt_ecn.h"
           if [ -f "$ECN_H" ]; then
             sed -i 's/#include <linux\/netfilter\/xt_dscp.h>//g' "$ECN_H"
@@ -160,15 +169,6 @@ jobs:
           ECN_C="net/netfilter/xt_ecn.c"
           if [ -f "$ECN_C" ]; then
             sed -i '1i #define XT_DSCP_MASK 0xfc' "$ECN_C"
-          fi
-          
-          # Injeksi brutal untuk xt_hl (solusi error ipt_ttl.h)
-          HL_C="net/netfilter/xt_hl.c"
-          if [ -f "$HL_C" ]; then
-            sed -i 's/#include <linux\/netfilter_ipv4\/ipt_ttl.h>//g' "$HL_C"
-            sed -i 's/#include <linux\/netfilter_ipv6\/ip6t_hl.h>//g' "$HL_C"
-            sed -i '1i struct ipt_ttl_info { __u8 mode; __u8 ttl; };\nstruct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' "$HL_C"
-            echo "xt_hl.c safely bypassed without header files!"
           fi
           
       - name: Setup Clang 17
