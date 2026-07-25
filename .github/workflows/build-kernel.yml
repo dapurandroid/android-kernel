@@ -116,7 +116,7 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Safe Struct Deletion)..."
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Surgical Strike)..."
           SUCOMPAT="drivers/kernelsu/feature/sucompat.c"
           if [ -f "$SUCOMPAT" ]; then
             sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$SUCOMPAT"
@@ -124,14 +124,16 @@ jobs:
           
           FILE_WRAPPER="drivers/kernelsu/infra/file_wrapper.c"
           if [ -f "$FILE_WRAPPER" ]; then
-            # Hapus HANYA baris pemanggilan anggota struct yang tidak didukung, 
-            # biarkan fungsinya utuh agar syntax kurung kurawal {} tidak jebol.
+            # Hapus fungsi secara absolut dari deklarasi hingga kurung tutup
+            sed -i '/static int ksu_wrapper_iopoll/,/^}/d' "$FILE_WRAPPER"
+            sed -i '/static int ksu_wrapper_remap_file_range/,/^}/d' "$FILE_WRAPPER"
+            
+            # Bersihkan referensi pemanggilan di dalam struct
             sed -i '/\.iopoll/d' "$FILE_WRAPPER"
             sed -i '/\.remap_file_range/d' "$FILE_WRAPPER"
-            sed -i '/->iopoll/d' "$FILE_WRAPPER"
-            sed -i '/->remap_file_range/d' "$FILE_WRAPPER"
+            sed -i '/ops\.iopoll/d' "$FILE_WRAPPER"
+            sed -i '/ops\.remap_file_range/d' "$FILE_WRAPPER"
             sed -i '/REMAP_FILE_DEDUP/d' "$FILE_WRAPPER"
-            echo "KSU-Next file_wrapper.c syntactically secured!"
           fi
 
           echo "4. Patching Samsung Debug Snapshot..."
@@ -140,22 +142,20 @@ jobs:
             sed -i '/ESR_ELx_EC_/d' "$DPM_FILE"
           fi
           
-          echo "5. Global Netfilter Header Bridge & Case-Sensitivity Fix..."
-          mkdir -p "include/linux/netfilter_ipv4"
-          find "include" -name "ipt_*.h" -exec cp -u {} "include/linux/netfilter_ipv4/" \; 2>/dev/null || true
-          
-          # Vaksin khusus untuk masalah huruf besar/kecil (xt_MARK.h vs xt_mark.h)
-          for dir in "include/uapi/linux/netfilter" "include/linux/netfilter"; do
-            if [ -d "$dir" ]; then
-              [ -f "$dir/xt_MARK.h" ] && cp "$dir/xt_MARK.h" "$dir/xt_mark.h" 2>/dev/null || true
-              [ -f "$dir/xt_mark.h" ] && cp "$dir/xt_mark.h" "$dir/xt_MARK.h" 2>/dev/null || true
+          echo "5. Global Netfilter Header Case-Sensitivity Fix..."
+          # Fix massal untuk seluruh file header netfilter yang korup (xt_MARK, xt_DSCP, dll)
+          find include/ -iname "xt_*.h" | while read -r file; do
+            dir=$(dirname "$file")
+            base=$(basename "$file")
+            lower_base=$(echo "$base" | tr '[:upper:]' '[:lower:]')
+            if [ "$base" != "$lower_base" ]; then
+              cp -n "$file" "$dir/$lower_base" 2>/dev/null || true
             fi
           done
           
           XT_MARK="net/netfilter/xt_mark.c"
           if [ -f "$XT_MARK" ]; then
             sed -i '1i #include <linux/types.h>\nstruct xt_mark_tginfo2 { __u32 mark, mask; };\nstruct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' "$XT_MARK"
-            echo "xt_mark.c successfully patched!"
           fi
           
       - name: Setup Clang 17
