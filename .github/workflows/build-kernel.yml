@@ -86,6 +86,8 @@ jobs:
             # Sapu bersih semua file .c dan .h di folder FIVE agar menggunakan alamat mutlak (absolute path)
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/block/|#include \"$KERNEL_DIR/drivers/block/|g" {} \;
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"security/integrity/|#include \"$KERNEL_DIR/security/integrity/|g" {} \;
+            # Tambahan baru untuk mengatasi file dm.h yang nyangkut di dmverity
+            find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
             echo "Seluruh file Samsung Knox (FIVE) berhasil divaksin absolute path!"
           fi
 
