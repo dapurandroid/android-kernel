@@ -116,29 +116,28 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          echo "3. Patching KernelSU-Next for Kernel 4.19 (Safe Bypasses & Macros)..."
-          [ -f "drivers/kernelsu/feature/sucompat.c" ] && sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "drivers/kernelsu/feature/sucompat.c"
-          [ -f "drivers/kernelsu/infra/su_mount_ns.c" ] && sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "drivers/kernelsu/infra/su_mount_ns.c"
-          [ -f "drivers/kernelsu/infra/seccomp_cache.c" ] && sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "drivers/kernelsu/infra/seccomp_cache.c"
+          echo "3. Patching KernelSU-Next for Kernel 4.19 (Ultimate Symlink-Proof Method)..."
+          # Kita pakai flag -L pada find agar symlink folder KSU tidak terlewat dan langsung membedah file aslinya
+          find -L drivers/kernelsu -type f -name "sucompat.c" -exec sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' {} +
+          find -L drivers/kernelsu -type f -name "su_mount_ns.c" -exec sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' {} +
+          find -L drivers/kernelsu -type f -name "seccomp_cache.c" -exec sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' {} +
+          find -L drivers/kernelsu -type f -name "allowlist.c" -exec sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do {} while(0)\n#endif' {} +
           
-          # Membungkam 2 fitur KSU-Next yang tidak disupport Kernel 4.19
-          cat << 'EOF' > drivers/kernelsu/infra/file_wrapper.c
+          # [FIX ERROR TERBARU] Menghapus referensi filter_count karena Kernel 4.19 tidak memiliki variabel tersebut
+          find -L drivers/kernelsu -type f -name "app_profile.c" -exec sed -i '/filter_count/d' {} +
+          
+          # Membungkam fitur wrapper yang tidak kompatibel
+          cat << 'EOF' > tmp_wrapper.c
           int ksu_file_wrapper_init(void) { return 0; }
           void ksu_file_wrapper_exit(void) {}
           EOF
+          find -L drivers/kernelsu -type f -name "file_wrapper.c" -exec cp tmp_wrapper.c {} +
           
-          cat << 'EOF' > drivers/kernelsu/manager/pkg_observer.c
+          cat << 'EOF' > tmp_fsnotify.c
           int ksu_fsnotify_init(void) { return 0; }
           void ksu_fsnotify_exit(void) {}
           EOF
-          
-          # [JURUS BARU] Suntik Makro Penerjemah Langsung ke allowlist.c
-          ALLOWLIST="KernelSU/policy/allowlist.c"
-          [ ! -f "$ALLOWLIST" ] && ALLOWLIST="drivers/kernelsu/policy/allowlist.c"
-          if [ -f "$ALLOWLIST" ]; then
-            sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do {} while(0)\n#endif' "$ALLOWLIST"
-            echo "allowlist.c macros successfully injected!"
-          fi
+          find -L drivers/kernelsu -type f -name "pkg_observer.c" -exec cp tmp_fsnotify.c {} +
 
           echo "4. Patching Samsung Debug Snapshot..."
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
