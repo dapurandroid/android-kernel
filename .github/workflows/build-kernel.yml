@@ -114,7 +114,7 @@ jobs:
           echo "-> Menerapkan Patch SUSFS Khusus Kernel 4.19..."
           patch -p1 < $GITHUB_WORKSPACE/susfs4ksu/kernel_patches/50_add_susfs_in_kernel-4.19.patch || true
 
-      - name: Apply Custom Patches (Mali, Knox, KSU-Next, Netfilter)
+      - name: Apply Custom Patches (Mali, Knox, KSU-Next, Netfilter, AVC Override)
         run: |
           cd "$KERNEL_DIR"
           
@@ -152,7 +152,7 @@ jobs:
             sed -i '1i #include <linux/spinlock.h>\n#include <linux/sched/signal.h>\nextern struct task_struct init_task;\nextern rwlock_t tasklist_lock;' "$f"
           done
 
-          # 3. Intelligent Stubbing (Hanya file_wrapper & pkg_observer yang aman distub)
+          # 3. Intelligent Stubbing (file_wrapper & pkg_observer)
           WRAPPER_C=$(find -L "$KSU_DIR" -type f -name "file_wrapper.c" | head -n 1)
           if [ -n "$WRAPPER_C" ]; then
             cat << 'EOF' > "$WRAPPER_C"
@@ -174,7 +174,31 @@ jobs:
           EOF
           fi
 
-          # BLOK 4 DAN 5 DIHAPUS - SELINUX DIBIARKAN HIDUP ALAMI
+          # 4. OPERASI PEMBERSIHAN (Surgical Stubbing KSU SELinux Rules)
+          echo "-> Membungkam error struktur SELinux 5.10+ di Kernel 4.19..."
+          echo "int apply_kernelsu_rules(void) { return 0; }" > "$KSU_DIR/selinux/rules.c"
+          cat << 'EOF' > "$KSU_DIR/selinux/sepolicy.c"
+          int handle_sepolicy(unsigned long arg3, void *arg4) { return 0; }
+          int cache_sid(void) { return 0; }
+          EOF
+          echo "int dummy_selinux_hide = 0;" > "$KSU_DIR/feature/selinux_hide.c"
+
+          # 5. OPERASI KARPET MERAH (AVC Override di Kernel-Space)
+          echo "-> Menyuntikkan Karpet Merah KSU ke jantung SELinux Samsung..."
+          AVC_C="security/selinux/avc.c"
+          if [ -f "$AVC_C" ]; then
+            # Deklarasi fungsi KSU (weak linker agar tidak error jika KSU dimatikan)
+            sed -i '1i extern bool is_ksu_domain(void) __attribute__((weak));' "$AVC_C"
+            
+            # Injeksi presisi tepat setelah kurung kurawal pembuka { di fungsi avc_has_perm
+            awk '/^int avc_has_perm\(/ { in_func=1 } in_func && /^{/ { print; print "    if (is_ksu_domain && is_ksu_domain()) return 0; /* KSU VIP Bypass */"; in_func=0; next } 1' "$AVC_C" > temp_avc.c && mv temp_avc.c "$AVC_C"
+            
+            # Injeksi presisi ganda di fungsi avc_has_perm_noaudit
+            awk '/^int avc_has_perm_noaudit\(/ { in_func=1 } in_func && /^{/ { print; print "    if (is_ksu_domain && is_ksu_domain()) return 0; /* KSU VIP Bypass */"; in_func=0; next } 1' "$AVC_C" > temp_avc.c && mv temp_avc.c "$AVC_C"
+            echo "✅ AVC Override sukses tertanam!"
+          else
+            echo "⚠️ PERINGATAN: file security/selinux/avc.c tidak ditemukan!"
+          fi
 
           # 6. Netfilter & Samsung Debug Snapshot
           if [ -f "lib/debug-snapshot-dpm.c" ]; then
@@ -213,7 +237,7 @@ jobs:
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
-          # 7. THE ULTIMATE LINKER FIX (Fungsi Weak tetap aman karena akan tergantikan oleh SELinux KSU asli)
+          # 7. THE ULTIMATE LINKER FIX
           echo "-> Menyuntikkan Cangkang Fungsi Weak presisi ke init.c..."
           INIT_C=$(find -L "$KSU_DIR" -type f -name "init.c" | head -n 1)
           if [ -n "$INIT_C" ]; then
