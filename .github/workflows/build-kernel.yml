@@ -184,9 +184,8 @@ jobs:
           echo "int dummy_rules = 0;" > "$KSU_DIR/selinux/rules.c"
           echo "int dummy_sepolicy = 0;" > "$KSU_DIR/selinux/sepolicy.c"
 
-          # 6. Hapus selinux_hide
-          rm -f "$KSU_DIR/feature/selinux_hide.c"
-          sed -i '/selinux_hide.o/d' "$KSU_DIR/Makefile" 2>/dev/null || true
+          # 6. Intelligent Stubbing selinux_hide (Solusi Error Makefile)
+          echo "int dummy_selinux_hide = 0;" > "$KSU_DIR/feature/selinux_hide.c"
 
           # 7. Netfilter & Snapshot
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
