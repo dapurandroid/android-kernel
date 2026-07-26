@@ -113,6 +113,10 @@ jobs:
 
           # 2. Patching Sintaks KSU-Next (pgtable, mount, seccomp, makro)
           KSU_DIR="drivers/kernelsu"
+          
+          # FIX: Memastikan SEMUA file KSU membaca put_task_struct bawaan kernel 4.19
+          find -L "$KSU_DIR" -type f -name "*.c" -exec sed -i '1i #include <linux/sched/task.h>' {} \;
+          
           for f in $(find -L "$KSU_DIR" -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
           for f in $(find -L "$KSU_DIR" -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
           for f in $(find -L "$KSU_DIR" -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
@@ -124,7 +128,7 @@ jobs:
           
           # Fix Kunci Tasklist
           for f in $(find -L "$KSU_DIR" -type f -name "dispatch.c" 2>/dev/null); do
-            sed -i '1i #include <linux/spinlock.h>\n#include <linux/sched/task.h>\n#include <linux/sched/signal.h>\nextern struct task_struct init_task;\nextern rwlock_t tasklist_lock;' "$f"
+            sed -i '1i #include <linux/spinlock.h>\n#include <linux/sched/signal.h>\nextern struct task_struct init_task;\nextern rwlock_t tasklist_lock;' "$f"
           done
 
           # 3. Intelligent Stubbing (file_wrapper & pkg_observer)
@@ -167,8 +171,11 @@ jobs:
           # 5. Intelligent Stubbing selinux_hide
           echo "int dummy_selinux_hide = 0;" > "$KSU_DIR/feature/selinux_hide.c"
 
-          # 6. Netfilter & Samsung Debug Snapshot
-          [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
+          # 6. Netfilter & Samsung Debug Snapshot (Mematikan error ESR_ELx_EC secara absolut)
+          if [ -f "lib/debug-snapshot-dpm.c" ]; then
+            sed -i '1i #include <asm/esr.h>' "lib/debug-snapshot-dpm.c" 2>/dev/null || true
+            sed -i '1i #ifndef ESR_ELx_EC\n#define ESR_ELx_EC(x) (0)\n#endif' "lib/debug-snapshot-dpm.c"
+          fi
           
           mkdir -p include/linux/netfilter include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
           echo '#ifndef _XT_MARK_H' > include/linux/netfilter/xt_mark.h
@@ -201,7 +208,7 @@ jobs:
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
-          # 7. THE ULTIMATE LINKER FIX (Redefinisi put_task_struct Dihapus Mutlak)
+          # 7. THE ULTIMATE LINKER FIX (Termasuk tambahan fungsi ksu_selinux_hide_exit yang terlewat)
           echo "-> Menyuntikkan Cangkang Fungsi Weak presisi ke init.c..."
           INIT_C=$(find -L "$KSU_DIR" -type f -name "init.c" | head -n 1)
           if [ -n "$INIT_C" ]; then
@@ -210,7 +217,6 @@ jobs:
           /* KSU 4.19 COMPATIBILITY STUBS FOR LINKER */
           #include <linux/uaccess.h>
           #include <linux/cred.h>
-          #include <linux/sched/task.h>
           
           extern long probe_kernel_read(void *dst, const void *src, size_t size);
           extern long probe_kernel_write(void *dst, const void *src, size_t size);
@@ -228,6 +234,7 @@ jobs:
           
           __attribute__((weak)) void escape_to_root_for_adb_root(void) {}
           __attribute__((weak)) void ksu_selinux_hide_init(void) {}
+          __attribute__((weak)) void ksu_selinux_hide_exit(void) {}
           __attribute__((weak)) void ksu_selinux_hide_handle_post_fs_data(void) {}
           __attribute__((weak)) void ksu_selinux_hide_handle_second_stage(void) {}
           __attribute__((weak)) void ksu_selinux_hide_drop_backup_if_unused(void) {}
