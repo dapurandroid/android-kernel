@@ -206,13 +206,11 @@ jobs:
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
-          # 8. THE ULTIMATE LINKER FIX (Menyumbat 21 Error Missing Symbol ld.lld)
-          echo "-> Menerapkan Cangkang Fungsi Weak untuk Linker 4.19..."
-          cat << 'EOF' > "$KSU_DIR/compat_419.c"
-          #include <linux/types.h>
-          #include <linux/uaccess.h>
-          #include <linux/fs.h>
+          # 8. THE ULTIMATE LINKER FIX (Menyuntikkan Cangkang ke sucompat.c)
+          echo "-> Menerapkan Cangkang Fungsi Weak langsung ke sucompat.c..."
+          cat << 'EOF' >> "$KSU_DIR/sucompat.c"
           
+          #include <linux/uaccess.h>
           extern long probe_kernel_read(void *dst, const void *src, size_t size);
           extern long probe_kernel_write(void *dst, const void *src, size_t size);
           
@@ -240,8 +238,6 @@ jobs:
           __attribute__((weak)) bool is_init(void *t) { return false; }
           __attribute__((weak)) void put_task_struct(void *t) {}
           EOF
-          
-          sed -i '$ a obj-y += compat_419.o' "$KSU_DIR/Makefile"
           
       - name: Setup Clang 17
         run: |
