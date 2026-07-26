@@ -111,14 +111,8 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/block/|#include \"$KERNEL_DIR/drivers/block/|g; s|#include \"security/integrity/|#include \"$KERNEL_DIR/security/integrity/|g; s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          # 2. Injeksi Header Dasar ke KSU-Next
+          # 2. Patching Sintaks KSU-Next (pgtable, mount, seccomp, makro)
           KSU_DIR="drivers/kernelsu"
-          cat << 'EOF' >> "$KSU_DIR/sucompat.h"
-          #include <linux/sched/task.h>
-          #include <linux/fs.h>
-          EOF
-
-          # 3. Patching Sintaks KSU-Next
           for f in $(find -L "$KSU_DIR" -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
           for f in $(find -L "$KSU_DIR" -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
           for f in $(find -L "$KSU_DIR" -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
@@ -128,11 +122,12 @@ jobs:
           find -L "$KSU_DIR" -type f -name "*.c" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
           find -L "$KSU_DIR" -type f -name "*.h" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
           
+          # Fix Kunci Tasklist
           for f in $(find -L "$KSU_DIR" -type f -name "dispatch.c" 2>/dev/null); do
             sed -i '1i #include <linux/spinlock.h>\n#include <linux/sched/task.h>\n#include <linux/sched/signal.h>\nextern struct task_struct init_task;\nextern rwlock_t tasklist_lock;' "$f"
           done
 
-          # 4. Intelligent Stubbing (file_wrapper & pkg_observer)
+          # 3. Intelligent Stubbing (file_wrapper & pkg_observer)
           WRAPPER_C=$(find -L "$KSU_DIR" -type f -name "file_wrapper.c" | head -n 1)
           if [ -n "$WRAPPER_C" ]; then
             cat << 'EOF' > "$WRAPPER_C"
@@ -154,7 +149,7 @@ jobs:
           EOF
           fi
 
-          # 5. Intelligent Stubbing SELinux (BYPASS KNOX TOTAL)
+          # 4. Intelligent Stubbing SELinux (Bypass Knox Total)
           rm -f "$KSU_DIR/selinux/"*.c
           cat << 'EOF' > "$KSU_DIR/selinux/selinux.c"
           #include <linux/types.h>
@@ -169,10 +164,10 @@ jobs:
           echo "int dummy_rules = 0;" > "$KSU_DIR/selinux/rules.c"
           echo "int dummy_sepolicy = 0;" > "$KSU_DIR/selinux/sepolicy.c"
 
-          # 6. Intelligent Stubbing selinux_hide
+          # 5. Intelligent Stubbing selinux_hide
           echo "int dummy_selinux_hide = 0;" > "$KSU_DIR/feature/selinux_hide.c"
 
-          # 7. Netfilter & Snapshot
+          # 6. Netfilter & Samsung Debug Snapshot
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
           
           mkdir -p include/linux/netfilter include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
@@ -206,10 +201,13 @@ jobs:
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
-          # 8. THE ULTIMATE LINKER FIX (Menyuntikkan Cangkang ke sucompat.c)
-          echo "-> Menerapkan Cangkang Fungsi Weak langsung ke sucompat.c..."
-          cat << 'EOF' >> "$KSU_DIR/sucompat.c"
+          # 7. THE ULTIMATE LINKER FIX (Injeksi Langsung ke core/init.c)
+          echo "-> Menyuntikkan Cangkang Fungsi Weak langsung ke init.c agar terbaca oleh Linker..."
+          INIT_C=$(find -L "$KSU_DIR" -type f -name "init.c" | head -n 1)
+          if [ -n "$INIT_C" ]; then
+            cat << 'EOF' >> "$INIT_C"
           
+          /* KSU 4.19 COMPATIBILITY STUBS FOR LINKER */
           #include <linux/uaccess.h>
           extern long probe_kernel_read(void *dst, const void *src, size_t size);
           extern long probe_kernel_write(void *dst, const void *src, size_t size);
@@ -238,6 +236,9 @@ jobs:
           __attribute__((weak)) bool is_init(void *t) { return false; }
           __attribute__((weak)) void put_task_struct(void *t) {}
           EOF
+          else
+            echo "ERROR: core/init.c tidak ditemukan!"
+          fi
           
       - name: Setup Clang 17
         run: |
