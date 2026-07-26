@@ -147,17 +147,31 @@ jobs:
             sed -i '1i #include <linux/spinlock.h>\n#include <linux/sched/task.h>\n#include <linux/sched/signal.h>\nextern struct task_struct init_task;\nextern rwlock_t tasklist_lock;' "$f"
           done
 
-          # 4. Transplantasi SELinux KSU Official (Utuh)
+          # 4. Intelligent Stubbing untuk file_wrapper.c (Penawar Mutlak 4.19)
+          WRAPPER_C=$(find -L "$KSU_DIR" -type f -name "file_wrapper.c" | head -n 1)
+          if [ -n "$WRAPPER_C" ]; then
+            echo "-> Menulis ulang file_wrapper.c menjadi Cangkang Pintar..."
+            cat << 'EOF' > "$WRAPPER_C"
+          #include <linux/fs.h>
+          #include <linux/types.h>
+          int ksu_file_wrapper_init(void) { return 0; }
+          void ksu_file_wrapper_exit(void) {}
+          int ksu_install_file_wrapper(struct file *file) { return 0; }
+          u32 ksu_file_sid(struct file *file) { return 0; }
+          EOF
+          fi
+
+          # 5. Transplantasi SELinux KSU Official
           echo "-> Melakukan Transplantasi SELinux KSU Official..."
           rm -rf "$KSU_DIR/selinux"/*
           git clone --depth 1 https://github.com/tiann/KernelSU.git /tmp/ksu_official
           cp -r /tmp/ksu_official/kernel/selinux/* "$KSU_DIR/selinux"/
           
-          # 5. Hapus Fitur selinux_hide yang Bentrok dengan 4.19
+          # 6. Hapus Fitur selinux_hide yang Bentrok dengan 4.19
           rm -f "$KSU_DIR/feature/selinux_hide.c"
           sed -i '/selinux_hide.o/d' "$KSU_DIR/Makefile" 2>/dev/null || true
 
-          # 6. Patching Samsung Debug Snapshot & Netfilter
+          # 7. Patching Samsung Debug Snapshot & Netfilter
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
           
           mkdir -p include/linux/netfilter include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
