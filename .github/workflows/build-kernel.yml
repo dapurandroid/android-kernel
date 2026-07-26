@@ -201,14 +201,17 @@ jobs:
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
-          # 7. THE ULTIMATE LINKER FIX (Injeksi Langsung ke core/init.c)
-          echo "-> Menyuntikkan Cangkang Fungsi Weak langsung ke init.c agar terbaca oleh Linker..."
+          # 7. THE ULTIMATE LINKER FIX (Tipe Data Diperbaiki)
+          echo "-> Menyuntikkan Cangkang Fungsi Weak presisi ke init.c..."
           INIT_C=$(find -L "$KSU_DIR" -type f -name "init.c" | head -n 1)
           if [ -n "$INIT_C" ]; then
             cat << 'EOF' >> "$INIT_C"
           
           /* KSU 4.19 COMPATIBILITY STUBS FOR LINKER */
           #include <linux/uaccess.h>
+          #include <linux/cred.h>
+          #include <linux/sched/task.h>
+          
           extern long probe_kernel_read(void *dst, const void *src, size_t size);
           extern long probe_kernel_write(void *dst, const void *src, size_t size);
           
@@ -220,8 +223,8 @@ jobs:
           __attribute__((weak)) int path_umount(struct path *path, int flags) { return 0; }
           
           __attribute__((weak)) void seccomp_filter_release(void *tsk) {}
-          __attribute__((weak)) int getenforce(void) { return 1; }
-          __attribute__((weak)) int setenforce(int enforce) { return 0; }
+          __attribute__((weak)) bool getenforce(void) { return true; }
+          __attribute__((weak)) void setenforce(bool enforce) {}
           
           __attribute__((weak)) void escape_to_root_for_adb_root(void) {}
           __attribute__((weak)) void ksu_selinux_hide_init(void) {}
@@ -231,10 +234,10 @@ jobs:
           
           __attribute__((weak)) void setup_ksu_cred(void) {}
           __attribute__((weak)) bool is_ksu_domain(void) { return false; }
-          __attribute__((weak)) bool is_task_ksu_domain(void *t) { return false; }
-          __attribute__((weak)) bool is_zygote(void *t) { return false; }
-          __attribute__((weak)) bool is_init(void *t) { return false; }
-          __attribute__((weak)) void put_task_struct(void *t) {}
+          __attribute__((weak)) bool is_task_ksu_domain(const struct cred *cred) { return false; }
+          __attribute__((weak)) bool is_zygote(const struct cred *cred) { return false; }
+          __attribute__((weak)) bool is_init(const struct cred *cred) { return false; }
+          __attribute__((weak)) void put_task_struct(struct task_struct *t) {}
           EOF
           else
             echo "ERROR: core/init.c tidak ditemukan!"
