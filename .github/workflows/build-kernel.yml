@@ -161,7 +161,7 @@ jobs:
           int ksu_file_wrapper_init(void) { return 0; }
           void ksu_file_wrapper_exit(void) {}
           int ksu_install_file_wrapper(struct file *file) { return 0; }
-          u32 ksu_file_sid(struct file *file) { return 0; }
+          /* ksu_file_sid DIHAPUS - Dibiarkan ditangani selinux.c */
           EOF
           fi
 
@@ -177,10 +177,12 @@ jobs:
           # 4. OPERASI PEMBERSIHAN (Surgical Stubbing KSU SELinux Rules)
           echo "-> Membungkam error struktur SELinux 5.10+ di Kernel 4.19..."
           echo "int apply_kernelsu_rules(void) { return 0; }" > "$KSU_DIR/selinux/rules.c"
+          
           cat << 'EOF' > "$KSU_DIR/selinux/sepolicy.c"
           int handle_sepolicy(unsigned long arg3, void *arg4) { return 0; }
-          int cache_sid(void) { return 0; }
+          /* cache_sid DIHAPUS - Dibiarkan ditangani selinux.c */
           EOF
+          
           echo "int dummy_selinux_hide = 0;" > "$KSU_DIR/feature/selinux_hide.c"
 
           # 5. OPERASI KARPET MERAH (AVC Override di Kernel-Space)
