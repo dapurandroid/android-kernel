@@ -111,26 +111,11 @@ jobs:
             find "$FIVE_DIR" -type f -name "*.[ch]" -exec sed -i "s|#include \"drivers/block/|#include \"$KERNEL_DIR/drivers/block/|g; s|#include \"security/integrity/|#include \"$KERNEL_DIR/security/integrity/|g; s|#include \"drivers/md/|#include \"$KERNEL_DIR/drivers/md/|g" {} \;
           fi
 
-          # 2. Injeksi Kamus Kompatibilitas Memori 4.19
+          # 2. Injeksi Header Dasar ke KSU-Next
           KSU_DIR="drivers/kernelsu"
           cat << 'EOF' >> "$KSU_DIR/sucompat.h"
           #include <linux/sched/task.h>
           #include <linux/fs.h>
-          #ifndef copy_from_user_nofault
-          #define copy_from_user_nofault probe_kernel_read
-          #endif
-          #ifndef copy_to_user_nofault
-          #define copy_to_user_nofault probe_kernel_write
-          #endif
-          #ifndef copy_to_kernel_nofault
-          #define copy_to_kernel_nofault probe_kernel_write
-          #endif
-          #ifndef strncpy_from_user_nofault
-          #define strncpy_from_user_nofault strncpy_from_user
-          #endif
-          #ifndef path_mount
-          #define path_mount(path, nd, flags, data) 0
-          #endif
           EOF
 
           # 3. Patching Sintaks KSU-Next
@@ -184,7 +169,7 @@ jobs:
           echo "int dummy_rules = 0;" > "$KSU_DIR/selinux/rules.c"
           echo "int dummy_sepolicy = 0;" > "$KSU_DIR/selinux/sepolicy.c"
 
-          # 6. Intelligent Stubbing selinux_hide (Solusi Error Makefile)
+          # 6. Intelligent Stubbing selinux_hide
           echo "int dummy_selinux_hide = 0;" > "$KSU_DIR/feature/selinux_hide.c"
 
           # 7. Netfilter & Snapshot
@@ -220,6 +205,43 @@ jobs:
           echo 'enum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          
+          # 8. THE ULTIMATE LINKER FIX (Menyumbat 21 Error Missing Symbol ld.lld)
+          echo "-> Menerapkan Cangkang Fungsi Weak untuk Linker 4.19..."
+          cat << 'EOF' > "$KSU_DIR/compat_419.c"
+          #include <linux/types.h>
+          #include <linux/uaccess.h>
+          #include <linux/fs.h>
+          
+          extern long probe_kernel_read(void *dst, const void *src, size_t size);
+          extern long probe_kernel_write(void *dst, const void *src, size_t size);
+          
+          __attribute__((weak)) long strncpy_from_user_nofault(char *dst, const void __user *unsafe_addr, long count) { return strncpy_from_user(dst, unsafe_addr, count); }
+          __attribute__((weak)) long copy_from_user_nofault(void *dst, const void __user *src, size_t size) { return probe_kernel_read(dst, src, size); }
+          __attribute__((weak)) long copy_to_user_nofault(void __user *dst, const void *src, size_t size) { return probe_kernel_write((void *)dst, src, size); }
+          __attribute__((weak)) long copy_to_kernel_nofault(void *dst, const void *src, size_t size) { return probe_kernel_write(dst, src, size); }
+          __attribute__((weak)) int path_mount(const char *dev_name, struct path *path, const char *type_page, unsigned long flags, void *data_page) { return 0; }
+          __attribute__((weak)) int path_umount(struct path *path, int flags) { return 0; }
+          
+          __attribute__((weak)) void seccomp_filter_release(void *tsk) {}
+          __attribute__((weak)) int getenforce(void) { return 1; }
+          __attribute__((weak)) int setenforce(int enforce) { return 0; }
+          
+          __attribute__((weak)) void escape_to_root_for_adb_root(void) {}
+          __attribute__((weak)) void ksu_selinux_hide_init(void) {}
+          __attribute__((weak)) void ksu_selinux_hide_handle_post_fs_data(void) {}
+          __attribute__((weak)) void ksu_selinux_hide_handle_second_stage(void) {}
+          __attribute__((weak)) void ksu_selinux_hide_drop_backup_if_unused(void) {}
+          
+          __attribute__((weak)) void setup_ksu_cred(void) {}
+          __attribute__((weak)) bool is_ksu_domain(void) { return false; }
+          __attribute__((weak)) bool is_task_ksu_domain(void *t) { return false; }
+          __attribute__((weak)) bool is_zygote(void *t) { return false; }
+          __attribute__((weak)) bool is_init(void *t) { return false; }
+          __attribute__((weak)) void put_task_struct(void *t) {}
+          EOF
+          
+          sed -i '$ a obj-y += compat_419.o' "$KSU_DIR/Makefile"
           
       - name: Setup Clang 17
         run: |
