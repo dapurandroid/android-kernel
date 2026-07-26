@@ -134,10 +134,13 @@ jobs:
           #endif
           EOF
 
-          # 3. Patching Sintaks KSU-Next (pgtable, mount, minmax, TWA_RESUME, tasklist_lock)
+          # 3. Patching Sintaks KSU-Next (pgtable, mount, minmax, TWA_RESUME, filter_count, dll)
           for f in $(find -L "$KSU_DIR" -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
           for f in $(find -L "$KSU_DIR" -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
           for f in $(find -L "$KSU_DIR" -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
+          
+          # ---> PENGEMBALIAN BARIS YANG HILANG <---
+          for f in $(find -L "$KSU_DIR" -type f -name "app_profile.c" 2>/dev/null); do sed -i '/filter_count/d' "$f"; done
           
           find -L "$KSU_DIR" -type f -name "*.c" -exec sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do { } while(0)\n#endif' {} \;
           find -L "$KSU_DIR" -type f -name "*.c" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
