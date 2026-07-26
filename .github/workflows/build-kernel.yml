@@ -187,14 +187,24 @@ jobs:
           echo "-> Menyuntikkan Karpet Merah KSU ke jantung SELinux Samsung..."
           AVC_C="security/selinux/avc.c"
           if [ -f "$AVC_C" ]; then
-            # Deklarasi fungsi KSU (weak linker agar tidak error jika KSU dimatikan)
-            sed -i '1i extern bool is_ksu_domain(void) __attribute__((weak));' "$AVC_C"
+            # Kita gunakan AWK murni agar deklarasi diletakkan di tengah file (setelah semua include dimuat)
+            awk '
+            BEGIN { decl=0 }
+            /^int avc_has_perm\(/ || /^int avc_has_perm_noaudit\(/ {
+                if (decl == 0) {
+                    print "extern bool is_ksu_domain(void) __attribute__((weak));"
+                    decl = 1
+                }
+                in_func = 1
+            }
+            in_func && /^{/ {
+                print $0
+                print "    if (is_ksu_domain && is_ksu_domain()) return 0; /* KSU VIP Bypass */"
+                in_func = 0
+                next
+            }
+            1' "$AVC_C" > temp_avc.c && mv temp_avc.c "$AVC_C"
             
-            # Injeksi presisi tepat setelah kurung kurawal pembuka { di fungsi avc_has_perm
-            awk '/^int avc_has_perm\(/ { in_func=1 } in_func && /^{/ { print; print "    if (is_ksu_domain && is_ksu_domain()) return 0; /* KSU VIP Bypass */"; in_func=0; next } 1' "$AVC_C" > temp_avc.c && mv temp_avc.c "$AVC_C"
-            
-            # Injeksi presisi ganda di fungsi avc_has_perm_noaudit
-            awk '/^int avc_has_perm_noaudit\(/ { in_func=1 } in_func && /^{/ { print; print "    if (is_ksu_domain && is_ksu_domain()) return 0; /* KSU VIP Bypass */"; in_func=0; next } 1' "$AVC_C" > temp_avc.c && mv temp_avc.c "$AVC_C"
             echo "✅ AVC Override sukses tertanam!"
           else
             echo "⚠️ PERINGATAN: file security/selinux/avc.c tidak ditemukan!"
