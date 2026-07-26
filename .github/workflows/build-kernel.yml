@@ -121,16 +121,12 @@ jobs:
           for f in $(find -L drivers/kernelsu -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
           for f in $(find -L drivers/kernelsu -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
           
-          # FIX: Terapkan TWA_RESUME dan fallthrough ke SEMUA file sumber secara pukul rata
           find -L drivers/kernelsu -type f -name "*.c" -exec sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do { } while(0)\n#endif' {} \;
-          
           for f in $(find -L drivers/kernelsu -type f -name "app_profile.c" 2>/dev/null); do sed -i '/filter_count/d' "$f"; done
           
-          # Mengganti minmax.h ke kernel.h secara menyeluruh
           find -L drivers/kernelsu -type f -name "*.c" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
           find -L drivers/kernelsu -type f -name "*.h" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
           
-          # Memperbaiki urutan header dispatch.c agar lock terbaca
           for f in $(find -L drivers/kernelsu -type f -name "dispatch.c" 2>/dev/null); do
             sed -i '1i #include <linux/spinlock.h>\n#include <linux/sched/task.h>\n#include <linux/sched/signal.h>\nextern struct task_struct init_task;\nextern rwlock_t tasklist_lock;' "$f"
           done
@@ -143,7 +139,7 @@ jobs:
           echo "void ksu_fsnotify_exit(void) {}" >> tmp_f.c
           for f in $(find -L drivers/kernelsu -type f -name "pkg_observer.c" 2>/dev/null); do cp tmp_f.c "$f"; done
 
-          echo "4. Nuclear SELinux Stubbing for Samsung Knox Compatibility..."
+          echo "4. Nuclear SELinux Stubbing & Feature Lobotomy..."
           SELINUX_DIR=$(find -L drivers -type d -path "*/kernelsu/selinux" | head -n 1)
           if [ -n "$SELINUX_DIR" ]; then
             echo "" > "$SELINUX_DIR/rules.c"
@@ -155,6 +151,19 @@ jobs:
             echo 'int ksu_seccomp_sepolicy_rules(void) { return 0; }' >> "$SELINUX_DIR/selinux.c"
             echo 'void *ksu_dup_sepolicy(void *old) { return (void *)0; }' >> "$SELINUX_DIR/selinux.c"
             echo 'int ksu_load_sepolicy(void *data, size_t len) { return 0; }' >> "$SELINUX_DIR/selinux.c"
+          fi
+          
+          # EKSEKUSI PEMOTONGAN SARAF SELINUX HIDE
+          HIDE_C=$(find -L drivers/kernelsu -type f -name "selinux_hide.c" | head -n 1)
+          if [ -n "$HIDE_C" ]; then
+            echo "-> Stripping modern SELinux state hooks in selinux_hide.c..."
+            sed -i 's/mutex_lock(&selinux_state.status_lock);/\/\/ neutered/g' "$HIDE_C"
+            sed -i 's/mutex_unlock(&selinux_state.status_lock);/\/\/ neutered/g' "$HIDE_C"
+            sed -i 's/if (!selinux_state.status_page)/if (0)/g' "$HIDE_C"
+            sed -i 's/page_address(selinux_state.status_page)/NULL/g' "$HIDE_C"
+            sed -i 's/fake_state.policy = backup_sepolicy;/\/\/ neutered/g' "$HIDE_C"
+            sed -i 's/sidtab_destroy(backup_sepolicy->sidtab);/\/\/ neutered/g' "$HIDE_C"
+            sed -i 's/kfree(backup_sepolicy->sidtab);/\/\/ neutered/g' "$HIDE_C"
           fi
 
           echo "5. Patching Samsung Debug Snapshot..."
