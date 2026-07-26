@@ -112,7 +112,6 @@ jobs:
           fi
 
           # 2. Injeksi Kamus Kompatibilitas Memori 4.19 ke KSU-Next
-          # (Ini memperbaiki error undefined symbol: copy_from_user_nofault, dll)
           KSU_DIR="drivers/kernelsu"
           echo "-> Menyuntikkan kompatibilitas API Kernel 4.19 ke sucompat.h..."
           cat << 'EOF' >> "$KSU_DIR/sucompat.h"
@@ -135,7 +134,11 @@ jobs:
           #endif
           EOF
 
-          # 3. Patching Sintaks KSU-Next (minmax.h, TWA_RESUME, tasklist_lock)
+          # 3. Patching Sintaks KSU-Next (pgtable, mount, minmax, TWA_RESUME, tasklist_lock)
+          for f in $(find -L "$KSU_DIR" -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
+          for f in $(find -L "$KSU_DIR" -type f -name "su_mount_ns.c" 2>/dev/null); do sed -i 's|<uapi/linux/mount.h>|<linux/mount.h>|g' "$f"; done
+          for f in $(find -L "$KSU_DIR" -type f -name "seccomp_cache.c" 2>/dev/null); do sed -i '1i #ifndef SECCOMP_ARCH_NATIVE_NR\n#define SECCOMP_ARCH_NATIVE_NR 1024\n#endif' "$f"; done
+          
           find -L "$KSU_DIR" -type f -name "*.c" -exec sed -i '1i #ifndef TWA_RESUME\n#define TWA_RESUME true\n#endif\n#ifndef fallthrough\n#define fallthrough do { } while(0)\n#endif' {} \;
           find -L "$KSU_DIR" -type f -name "*.c" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
           find -L "$KSU_DIR" -type f -name "*.h" -exec sed -i 's|<linux/minmax.h>|<linux/kernel.h>|g' {} \;
@@ -145,7 +148,6 @@ jobs:
           done
 
           # 4. Transplantasi SELinux KSU Official (Utuh)
-          # (Ini memperbaiki error backup_sepolicy, is_ksu_domain, dll tanpa mematikan root)
           echo "-> Melakukan Transplantasi SELinux KSU Official..."
           rm -rf "$KSU_DIR/selinux"/*
           git clone --depth 1 https://github.com/tiann/KernelSU.git /tmp/ksu_official
@@ -159,14 +161,36 @@ jobs:
           [ -f "lib/debug-snapshot-dpm.c" ] && sed -i '/ESR_ELx_EC_/d' "lib/debug-snapshot-dpm.c"
           
           mkdir -p include/linux/netfilter include/linux/netfilter_ipv4 include/linux/netfilter_ipv6
+          
           echo '#ifndef _XT_MARK_H' > include/linux/netfilter/xt_mark.h
-          echo '#define _XT_MARK_H\n#include <linux/types.h>\nstruct xt_mark_tginfo2 { __u32 mark, mask; };\nstruct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };\n#endif' >> include/linux/netfilter/xt_mark.h
+          echo '#define _XT_MARK_H' >> include/linux/netfilter/xt_mark.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter/xt_mark.h
+          echo 'struct xt_mark_tginfo2 { __u32 mark, mask; };' >> include/linux/netfilter/xt_mark.h
+          echo 'struct xt_mark_mtinfo1 { __u32 mark, mask; __u8 invert; };' >> include/linux/netfilter/xt_mark.h
+          echo '#endif' >> include/linux/netfilter/xt_mark.h
+          
           echo '#ifndef _XT_DSCP_H' > include/linux/netfilter/xt_dscp.h
-          echo '#define _XT_DSCP_H\n#include <linux/types.h>\n#define XT_DSCP_MASK 0xfc\n#define XT_DSCP_SHIFT 2\n#define XT_DSCP_MAX 0x3f\nstruct xt_dscp_info { __u8 dscp; __u8 invert; };\n#endif' >> include/linux/netfilter/xt_dscp.h
+          echo '#define _XT_DSCP_H' >> include/linux/netfilter/xt_dscp.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter/xt_dscp.h
+          echo '#define XT_DSCP_MASK 0xfc' >> include/linux/netfilter/xt_dscp.h
+          echo '#define XT_DSCP_SHIFT 2' >> include/linux/netfilter/xt_dscp.h
+          echo '#define XT_DSCP_MAX 0x3f' >> include/linux/netfilter/xt_dscp.h
+          echo 'struct xt_dscp_info { __u8 dscp; __u8 invert; };' >> include/linux/netfilter/xt_dscp.h
+          echo '#endif' >> include/linux/netfilter/xt_dscp.h
+          
           echo '#ifndef _IPT_TTL_H' > include/linux/netfilter_ipv4/ipt_ttl.h
-          echo '#define _IPT_TTL_H\n#include <linux/types.h>\nenum { IPT_TTL_EQ = 0, IPT_TTL_NE, IPT_TTL_LT, IPT_TTL_GT };\nstruct ipt_ttl_info { __u8 mode; __u8 ttl; };\n#endif' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#define _IPT_TTL_H' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo 'enum { IPT_TTL_EQ = 0, IPT_TTL_NE, IPT_TTL_LT, IPT_TTL_GT };' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo 'struct ipt_ttl_info { __u8 mode; __u8 ttl; };' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          echo '#endif' >> include/linux/netfilter_ipv4/ipt_ttl.h
+          
           echo '#ifndef _IP6T_HL_H' > include/linux/netfilter_ipv6/ip6t_hl.h
-          echo '#define _IP6T_HL_H\n#include <linux/types.h>\nenum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };\nstruct ip6t_hl_info { __u8 mode; __u8 hop_limit; };\n#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#define _IP6T_HL_H' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#include <linux/types.h>' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo 'enum { IP6T_HL_EQ = 0, IP6T_HL_NE, IP6T_HL_LT, IP6T_HL_GT };' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
+          echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
       - name: Setup Clang 17
         run: |
