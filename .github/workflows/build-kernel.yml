@@ -99,6 +99,10 @@ jobs:
         run: |
           cd "$KERNEL_DIR"
           
+          # FIX TERAKHIR: Membuka Gembok Izin Eksekusi Script Bawaan Samsung
+          echo "-> Memperbaiki Izin Eksekusi Script Kernel..."
+          find scripts/ -type f -exec chmod +x {} \; 2>/dev/null || true
+          
           # 1. Patching Mali & Samsung Knox
           MALI_DIR="drivers/gpu/arm"
           if [ -d "$MALI_DIR" ]; then
@@ -113,8 +117,6 @@ jobs:
 
           # 2. Patching Sintaks KSU-Next (pgtable, mount, seccomp, makro)
           KSU_DIR="drivers/kernelsu"
-          
-          # FIX: Memastikan SEMUA file KSU membaca put_task_struct bawaan kernel 4.19
           find -L "$KSU_DIR" -type f -name "*.c" -exec sed -i '1i #include <linux/sched/task.h>' {} \;
           
           for f in $(find -L "$KSU_DIR" -type f -name "sucompat.c" 2>/dev/null); do sed -i 's|<linux/pgtable.h>|<asm/pgtable.h>|g' "$f"; done
@@ -208,7 +210,7 @@ jobs:
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
-          # 7. THE ULTIMATE LINKER FIX (Termasuk tambahan fungsi ksu_selinux_hide_exit yang terlewat)
+          # 7. THE ULTIMATE LINKER FIX
           echo "-> Menyuntikkan Cangkang Fungsi Weak presisi ke init.c..."
           INIT_C=$(find -L "$KSU_DIR" -type f -name "init.c" | head -n 1)
           if [ -n "$INIT_C" ]; then
