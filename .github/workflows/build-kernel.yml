@@ -201,7 +201,7 @@ jobs:
           echo 'struct ip6t_hl_info { __u8 mode; __u8 hop_limit; };' >> include/linux/netfilter_ipv6/ip6t_hl.h
           echo '#endif' >> include/linux/netfilter_ipv6/ip6t_hl.h
           
-          # 7. THE ULTIMATE LINKER FIX (Tipe Data Diperbaiki)
+          # 7. THE ULTIMATE LINKER FIX (Redefinisi put_task_struct Dihapus Mutlak)
           echo "-> Menyuntikkan Cangkang Fungsi Weak presisi ke init.c..."
           INIT_C=$(find -L "$KSU_DIR" -type f -name "init.c" | head -n 1)
           if [ -n "$INIT_C" ]; then
@@ -237,7 +237,6 @@ jobs:
           __attribute__((weak)) bool is_task_ksu_domain(const struct cred *cred) { return false; }
           __attribute__((weak)) bool is_zygote(const struct cred *cred) { return false; }
           __attribute__((weak)) bool is_init(const struct cred *cred) { return false; }
-          __attribute__((weak)) void put_task_struct(struct task_struct *t) {}
           EOF
           else
             echo "ERROR: core/init.c tidak ditemukan!"
