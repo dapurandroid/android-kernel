@@ -285,6 +285,9 @@ jobs:
           __attribute__((weak)) bool is_task_ksu_domain(const struct cred *cred) { return false; }
           __attribute__((weak)) bool is_zygote(const struct cred *cred) { return false; }
           __attribute__((weak)) bool is_init(const struct cred *cred) { return false; }
+          
+          /* PENAWAR ERROR VMLINUX (SELINUX CRED) UNTUK KERNEL 4.19 */
+          __attribute__((weak)) void* selinux_cred(const struct cred *c) { return c ? c->security : NULL; }
           EOF
           else
             echo "ERROR: core/init.c tidak ditemukan!"
